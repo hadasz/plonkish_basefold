@@ -888,6 +888,7 @@ where
 fn test_evaluate_generic_basecode() {
     use blake2::Blake2s256;
     use rand::rngs::OsRng;
+    use crate::pcs::multilinear::basefold::test::Five;
 
     type Pcs = Basefold<Mersenne61, Blake2s256,Five>;
     let mut rng = OsRng;
@@ -1645,7 +1646,7 @@ mod test {
         FieldTranscript, FieldTranscriptRead, FieldTranscriptWrite, InMemoryTranscript,
         TranscriptRead, TranscriptWrite,
     };
-    use crate::pcs::multilinear::basefold::Five;
+
     use crate::{
         pcs::multilinear::{
             basefold::Basefold,
@@ -1668,6 +1669,7 @@ mod test {
     use crate::util::arithmetic::PrimeField;
     use blake2::{digest::FixedOutputReset, Blake2s256};
     use halo2_curves::bn256::{Bn256, Fr};
+    use crate::pcs::multilinear::BasefoldExtParams;
 
 
     type Pcs = Basefold<Fp, Blake2s256,Five>;
@@ -1692,10 +1694,6 @@ mod test {
     
     #[test]
     fn commit_open_verify() {
-       let rng = ChaCha8Rng::from_entropy();
-        let now = Instant::now();
-	let x = Fp::random()  * Fp::random();
-	println!("mult {:?}", now.elapsed());
         run_commit_open_verify::<_, Pcs, Blake2sTranscript<_>>();
     }
 
