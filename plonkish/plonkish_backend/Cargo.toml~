@@ -1,0 +1,55 @@
+[package]
+name = "plonkish_backend"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+aes = "0.8"
+hex-literal = "0.3.3"
+ctr = {git = "https://github.com/RustCrypto/block-modes"}
+halo2_curves = { git = "https://github.com/privacy-scaling-explorations/halo2curves", tag = "0.3.3", package = "halo2curves", features = ["derive_serde"] }
+ff = {version = "0.13.0", features = ["derive"]}
+pasta_curves = { version = "0.5.0", features = ["serde"] }
+generic-array = { version = "0.14.7", features = ["serde"] }
+bitvec = "1.0.1"
+itertools = "0.10.5"
+num-bigint = "0.4.3"
+num-integer = "0.1.45"
+rand = "0.8"
+serde = { version = "1.0", features = ["derive"] }
+threadpool = "1.8.1"
+bincode = "1.3.3"
+sha3 = "0.10.6"
+blake2b_simd = "1.0.2"
+blake2={version = "0.10.6"}
+poseidon = { git = "https://github.com/han0110/poseidon", branch = "feature/with-spec" }
+rand_chacha={version ="0.3.1", features=["serde1"]}
+# timer
+ark-std = { version = "^0.4.0", default-features = false, optional = true }
+
+# parallel
+rayon = { version = "1.5.3", optional = true }
+subtle = "2.5.0"
+# frontend-halo2
+halo2_proofs = { git = "https://github.com/han0110/halo2.git", branch = "feature/for-benchmark", optional = true }
+plonky2_util = {path = "../../basefold_plonky/plonky2/util"}
+crossbeam = "0.8.2"
+[dev-dependencies]
+paste = "1.0.11"
+criterion = "0.4.0"
+pprof = { version = "0.11.0", features = ["criterion", "flamegraph"] }
+crossbeam = "0.8.2"
+[features]
+default = ["parallel", "frontend-halo2", "sanity-check"]
+
+timer = ["dep:ark-std", "ark-std?/print-trace", "halo2_proofs?/print-trace"]
+parallel = ["dep:rayon"]
+frontend-halo2 = ["dep:halo2_proofs"]
+
+benchmark = ["parallel"]
+sanity-check = []
+
+[[bench]]
+name = "zero_check"
+harness = false
+required-features = ["benchmark"]

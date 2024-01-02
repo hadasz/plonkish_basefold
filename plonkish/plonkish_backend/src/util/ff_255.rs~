@@ -1,0 +1,11 @@
+pub mod ft255 {
+    use ff::PrimeField;
+    use ff_derive_num::Num;
+    use serde::{Deserialize, Serialize};
+
+    #[derive(PrimeField, Num, Deserialize, Serialize)]
+    #[PrimeFieldModulus = "46242760681095663677370860714659204618859642560429202607213929836750194081793"]
+    #[PrimeFieldGenerator = "5"]
+    #[PrimeFieldReprEndianness = "little"]
+    pub struct Ft255([u64; 4]);
+}

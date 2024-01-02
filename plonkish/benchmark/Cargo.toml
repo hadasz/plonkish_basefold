@@ -1,0 +1,51 @@
+[package]
+name = "benchmark"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+rand = "0.8"
+itertools = "0.10.5"
+gnuplot = "0.0.37"
+rayon =  "1.5.3"
+# plonkish_backend
+plonkish_backend = { path = "../plonkish_backend", features = ["benchmark"] }
+
+# halo2
+halo2_proofs = { git = "https://github.com/han0110/halo2.git", branch = "feature/for-benchmark" }
+halo2_gadgets = { git = "https://github.com/han0110/halo2.git", branch = "feature/for-benchmark", features = ["unstable"] }
+snark-verifier = { git = "https://github.com/han0110/snark-verifier", branch = "feature/for-benchmark", default-features = false, features = ["loader_halo2", "system_halo2"] }
+ff = {version = "0.13.0"}
+# espresso
+ark-ff = { version = "0.4.0", default-features = false }
+ark-bn254 = { version = "0.4.0", default-features = false, features = ["curve"] }
+espresso_subroutines = { git = "https://github.com/EspressoSystems/hyperplonk", rev = "56b1085", package = "subroutines", default-features = false, features = ["parallel"] }
+espresso_hyperplonk = { git = "https://github.com/EspressoSystems/hyperplonk", rev = "56b1085", package = "hyperplonk", default-features = false, features = ["parallel"] }
+
+[features]
+default = []
+timer = ["plonkish_backend/timer", "halo2_proofs/print-trace", "espresso_subroutines/print-trace", "espresso_hyperplonk/print-trace"]
+
+
+
+
+
+
+
+
+
+
+[[bench]]
+name = "pcs_bench"
+harness = false
+
+
+
+
+
+
+
+
+
+[[bin]]
+name = "plotter"
