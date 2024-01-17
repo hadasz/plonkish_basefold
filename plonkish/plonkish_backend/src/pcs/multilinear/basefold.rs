@@ -310,15 +310,13 @@ where
             &pp.table_w_weights,
         );
 
-        let qp = Instant::now();
+
         let (queried_els, queries_usize_) =
             query_phase(transcript, &comm, &oracles, pp.num_verifier_queries);
 
         // a proof consists of roots, merkle paths, query paths, sum check oracles, eval, and final oracle
         //write sum check oracles
 
-        transcript
-            .write_field_elements(&sum_check_oracles.into_iter().flatten().collect::<Vec<F>>()); //write sumcheck
         transcript.write_field_element(&eval); //write eval
 
         if pp.num_rounds < pp.num_vars {
@@ -524,7 +522,7 @@ where
             });
 
         //write sum check oracles
-        transcript.write_field_elements(sum_check_oracles.iter().flatten());
+
         //write eval
         transcript.write_field_element(&eval);
         //write final oracle
@@ -578,24 +576,18 @@ where
         let mut fold_challenges: Vec<F> = Vec::with_capacity(vp.num_vars);
         let mut size = 0;
         let mut roots = Vec::new();
+	let mut sum_check_oracles = Vec::new();
         for i in 0..vp.num_rounds {
             roots.push(transcript.read_commitment().unwrap());
+	    sum_check_oracles.push(transcript.read_field_elements(3).unwrap());
             fold_challenges.push(transcript.squeeze_challenge());
         }
         size = size + 256 * vp.num_rounds;
-        //read last commitment
-        transcript.read_commitment().unwrap();
+
 
         let mut query_challenges = transcript.squeeze_challenges(vp.num_verifier_queries);
-        //read sum check oracles
-        let mut sum_check_oracles: Vec<Vec<F>> = transcript
-            .read_field_elements(3 * (vp.num_rounds + 1))
-            .unwrap()
-            .chunks(3)
-            .map(|c| c.to_vec())
-            .collect_vec();
 
-        size = size + field_size * (3 * (vp.num_rounds + 1)); // dont need last sumcheck oracle in proof
+        size = size + field_size * (3 * (vp.num_rounds + 1)); 
                                                               //read eval
 
         let eval = &transcript.read_field_element().unwrap(); //do not need eval in proof
@@ -696,8 +688,7 @@ where
         transcript: &mut impl TranscriptRead<Self::CommitmentChunk, F>,
     ) -> Result<(), Error> {
         use std::env;
-//	let key = "RAYON_NUM_THREADS";
-//	env::set_var(key, "32");    
+
         let comms = comms.into_iter().collect_vec();
         validate_input("batch verify", vp.num_vars, [], points)?;
 
@@ -721,13 +712,14 @@ where
         //read first $(num_var - 1) commitments
         let mut roots: Vec<Output<H>> = Vec::with_capacity(vp.num_rounds + 1);
         let mut fold_challenges: Vec<F> = Vec::with_capacity(vp.num_rounds);
+	let mut sum_check_oracles = Vec::new();
         for i in 0..vp.num_rounds {
             roots.push(transcript.read_commitment().unwrap());
+	    sum_check_oracles.push(transcript.read_field_elements(3).unwrap());
             fold_challenges.push(transcript.squeeze_challenge());
         }
 
-        //read last commitment
-        transcript.read_commitment().unwrap();
+
 
         let mut bh_evals = Vec::new();
         let mut eq = Vec::new();
@@ -774,12 +766,7 @@ where
 
         let mut count = 0;
 
-        let mut sum_check_oracles: Vec<Vec<F>> = transcript
-            .read_field_elements(3 * (vp.num_rounds + 1))
-            .unwrap()
-            .chunks(3)
-            .map(|c| c.to_vec())
-            .collect_vec();
+
 
         //read eval
         let eval = transcript.read_field_element().unwrap();
@@ -1974,7 +1961,7 @@ fn commit_phase<F: PrimeField, H: Hash>(
     let mut root = new_tree[new_tree.len() - 1][0].clone();
     let mut new_oracle = &comm.codeword;
 
-    let num_rounds = num_rounds; //pp.table.len() - pp.log_rate;
+    let num_rounds = num_rounds; 
     let mut eq = build_eq_x_r_vec::<F>(&point).unwrap();
 
     let mut eval = F::ZERO;
@@ -1984,16 +1971,20 @@ fn commit_phase<F: PrimeField, H: Hash>(
         bh_evals.push(comm.bh_evals[i]);
     }
 
-    let mut sum_check_oracles = Vec::with_capacity(num_rounds + 1);
-    sum_check_oracles.push(sum_check_first_round::<F>(&mut eq, &mut bh_evals));
+    let mut sum_check_oracles_vec = Vec::with_capacity(num_rounds + 1);
+    let mut sum_check_oracle = sum_check_first_round::<F>(&mut eq, &mut bh_evals);
+    sum_check_oracles_vec.push(sum_check_oracle.clone());
 
     for i in 0..(num_rounds) {
         transcript.write_commitment(&root).unwrap();
+	transcript.write_field_elements(&sum_check_oracle);
+	
         let challenge: F = transcript.squeeze_challenge();
-        let sumcheck = Instant::now();
-        sum_check_oracles.push(sum_check_challenge_round(&mut eq, &mut bh_evals, challenge));
 
-	let now = Instant::now();
+	sum_check_oracle = sum_check_challenge_round(&mut eq, &mut bh_evals, challenge);
+        sum_check_oracles_vec.push(sum_check_oracle.clone());
+
+
         oracles.push(basefold_one_round_by_interpolation_weights::<F>(
             &table_w_weights,
             i,
@@ -2002,14 +1993,14 @@ fn commit_phase<F: PrimeField, H: Hash>(
         ));
 
         new_oracle = &oracles[i];
-	let now = Instant::now();
+
         trees.push(merkelize::<F, H>(&new_oracle));
 
         root = trees[i][trees[i].len() - 1][0].clone();
     }
 
-    transcript.write_commitment(&root).unwrap();
-    return (trees, sum_check_oracles, oracles, bh_evals, eq, eval);
+
+    return (trees, sum_check_oracles_vec, oracles, bh_evals, eq, eval);
 }
 
 fn query_phase<F: PrimeField, H: Hash>(
