@@ -92,6 +92,7 @@ impl<F: PrimeField, H: Hash> BasefoldCommitment<F, H> {
             bh_evals: Vec::new(),
         }
     }
+
 }
 impl<F: PrimeField, H: Hash> PartialEq for BasefoldCommitment<F, H> {
     fn eq(&self, other: &Self) -> bool {
@@ -126,6 +127,13 @@ impl<F: PrimeField, H: Hash> AsRef<[Output<H>]> for BasefoldCommitment<F, H> {
     fn as_ref(&self) -> &[Output<H>] {
         let root = &self.codeword_tree[self.codeword_tree.len() - 1][0];
         slice::from_ref(root)
+    }
+}
+
+impl<F: PrimeField, H: Hash> AsRef<Output<H>> for BasefoldCommitment<F, H> {
+    fn as_ref(&self) -> &Output<H> {
+        let root = &self.codeword_tree[self.codeword_tree.len() - 1][0];
+	&root
     }
 }
 impl<F: PrimeField, H: Hash> AdditiveCommitment<F> for BasefoldCommitment<F, H> {
@@ -367,7 +375,9 @@ where
         let comms = comms.into_iter().collect_vec();
 
         validate_input("batch open", pp.num_vars, polys.clone(), points)?;
-
+	for comm in &comms{
+	    transcript.write_commitment(&comm.as_ref());
+	}
         let ell = evals.len().next_power_of_two().ilog2() as usize;
         let t = transcript.squeeze_challenges(ell);
 
@@ -691,8 +701,10 @@ where
 
         let comms = comms.into_iter().collect_vec();
         validate_input("batch verify", vp.num_vars, [], points)?;
+	transcript.read_commitments(comms.len());
 
         let ell = evals.len().next_power_of_two().ilog2() as usize;
+
         let t = transcript.squeeze_challenges(ell);
 
         let eq_xt = MultilinearPolynomial::eq_xy(&t);
