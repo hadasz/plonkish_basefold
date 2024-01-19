@@ -2004,7 +2004,7 @@ fn commit_phase<F: PrimeField, H: Hash>(
         transcript.write_field_elements(&sum_check_oracle);
 
         let challenge: F = transcript.squeeze_challenge();
-	println!("challenge  {:?}, {:?}", challenge, i);
+
         sum_check_oracle = sum_check_challenge_round(&mut eq, &mut bh_evals, challenge);
         sum_check_oracles_vec.push(sum_check_oracle.clone());
 

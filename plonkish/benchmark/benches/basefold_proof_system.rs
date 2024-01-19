@@ -50,8 +50,12 @@ impl plonkish_backend::pcs::multilinear::BasefoldExtParams for P{
 	return 2;
     }
 
-    fn get_basecode() -> usize{
+    fn get_basecode_rounds() -> usize{
 	return 2;
+    }
+
+    fn get_rs_basecode() -> bool{
+	true
     }
 
     fn get_reps() -> usize{
