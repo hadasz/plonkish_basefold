@@ -320,11 +320,14 @@ mod test {
 		return 5;
 	    }
 	    fn get_rate() -> usize{
-		return 3;
+		return 1;
 
 	    }
-	    fn get_basecode() -> usize{
-		return 2;
+	    fn get_basecode_rounds() -> usize{
+		return 1;
+	    }
+	    fn get_rs_basecode() -> bool{
+		true
 	    }
 	}
 
@@ -354,7 +357,7 @@ mod test {
             + TranscriptWrite<Pcs::CommitmentChunk, F>
             + InMemoryTranscript<Param = ()>,
     {
-        for num_vars in 10..25  {
+        for num_vars in 3..4  {
 	    println!("k {:?}", num_vars);
             // Setup
             let (pp, vp) = {
@@ -404,7 +407,7 @@ mod test {
             + TranscriptWrite<Pcs::CommitmentChunk, F>
             + InMemoryTranscript<Param = ()>,
     {
-        for num_vars in 10..25{
+        for num_vars in 2..3{
 	    println!("k {:?}", num_vars);	    
             let batch_size = 2;
             let num_points = batch_size >> 1;

@@ -1,4 +1,3 @@
-use core::fmt::Debug;
 use crate::pcs::Commitment;
 use crate::piop::sum_check::{
     classic::{ClassicSumCheck, CoefficientsProver},
@@ -23,6 +22,7 @@ use crate::{
     Error,
 };
 use aes::cipher::{KeyIvInit, StreamCipher, StreamCipherSeek};
+use core::fmt::Debug;
 use core::ptr::addr_of;
 use ctr;
 use ff::BatchInverter;
@@ -51,7 +51,7 @@ pub struct BasefoldParams<F: PrimeField> {
     table_w_weights: Vec<Vec<(F, F)>>,
     table: Vec<Vec<F>>,
     rng: ChaCha8Rng,
-    basecode: bool,
+    rs_basecode: bool,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -62,7 +62,7 @@ pub struct BasefoldProverParams<F: PrimeField> {
     num_verifier_queries: usize,
     num_vars: usize,
     num_rounds: usize,
-    basecode: bool,
+    rs_basecode: bool,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -73,7 +73,7 @@ pub struct BasefoldVerifierParams<F: PrimeField> {
     num_verifier_queries: usize,
     num_rounds: usize,
     table_w_weights: Vec<Vec<(F, F)>>,
-    basecode: bool,
+    rs_basecode: bool,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -92,7 +92,6 @@ impl<F: PrimeField, H: Hash> BasefoldCommitment<F, H> {
             bh_evals: Vec::new(),
         }
     }
-
 }
 impl<F: PrimeField, H: Hash> PartialEq for BasefoldCommitment<F, H> {
     fn eq(&self, other: &Self) -> bool {
@@ -104,14 +103,14 @@ impl<F: PrimeField, H: Hash> PartialEq for BasefoldCommitment<F, H> {
 
 impl<F: PrimeField, H: Hash> Eq for BasefoldCommitment<F, H> {}
 
-pub trait BasefoldExtParams : Debug{
-	
+pub trait BasefoldExtParams: Debug {
     fn get_reps() -> usize;
 
     fn get_rate() -> usize;
 
-    fn get_basecode()-> usize;
+    fn get_basecode_rounds() -> usize;
 
+    fn get_rs_basecode() -> bool;
 }
 
 #[derive(Debug)]
@@ -133,7 +132,7 @@ impl<F: PrimeField, H: Hash> AsRef<[Output<H>]> for BasefoldCommitment<F, H> {
 impl<F: PrimeField, H: Hash> AsRef<Output<H>> for BasefoldCommitment<F, H> {
     fn as_ref(&self) -> &Output<H> {
         let root = &self.codeword_tree[self.codeword_tree.len() - 1][0];
-	&root
+        &root
     }
 }
 impl<F: PrimeField, H: Hash> AdditiveCommitment<F> for BasefoldCommitment<F, H> {
@@ -176,11 +175,11 @@ impl<F: PrimeField, H: Hash> AdditiveCommitment<F> for BasefoldCommitment<F, H> 
         }
     }
 }
-impl<F, H,V> PolynomialCommitmentScheme<F> for Basefold<F, H, V>
+impl<F, H, V> PolynomialCommitmentScheme<F> for Basefold<F, H, V>
 where
     F: PrimeField + Serialize + DeserializeOwned,
     H: Hash,
-    V: BasefoldExtParams
+    V: BasefoldExtParams,
 {
     type Param = BasefoldParams<F>;
     type ProverParam = BasefoldProverParams<F>;
@@ -198,11 +197,11 @@ where
             log_rate: log_rate,
             num_verifier_queries: V::get_reps(),
             num_vars: log2_strict(poly_size),
-            num_rounds: Some(log2_strict(poly_size) - V::get_basecode()),
+            num_rounds: Some(log2_strict(poly_size) - V::get_basecode_rounds()),
             table_w_weights: table_w_weights,
             table: table,
             rng: test_rng.clone(),
-            basecode: true,
+            rs_basecode: V::get_rs_basecode(),
         })
     }
     fn trim(
@@ -223,7 +222,7 @@ where
                 num_verifier_queries: param.num_verifier_queries,
                 num_vars: param.num_vars,
                 num_rounds: rounds,
-                basecode: param.basecode,
+                rs_basecode: param.rs_basecode,
             },
             BasefoldVerifierParams {
                 rng: param.rng.clone(),
@@ -232,7 +231,7 @@ where
                 num_verifier_queries: param.num_verifier_queries,
                 num_rounds: rounds,
                 table_w_weights: param.table_w_weights.clone(),
-                basecode: param.basecode,
+                rs_basecode: param.rs_basecode,
             },
         ))
     }
@@ -241,21 +240,24 @@ where
         let (coeffs, mut bh_evals) =
             interpolate_over_boolean_hypercube_with_copy(&poly.evals().to_vec());
 
-
-
-	    let mut basecode = encode_rs_basecode(&coeffs, 1 << pp.log_rate , 1 << (pp.num_vars - pp.num_rounds));
-
-             let mut commitment = evaluate_over_foldable_domain_generic_basecode(1 << (pp.num_vars - pp.num_rounds),
+	println!("coeffs {:?}", coeffs);
+        let mut commitment = Vec::new();
+        if (pp.rs_basecode) {
+            let mut basecode = encode_rs_basecode(
+                &coeffs,
+                1 << pp.log_rate,
+                1 << (pp.num_vars - pp.num_rounds),
+            );
+            commitment = evaluate_over_foldable_domain_generic_basecode(
+                1 << (pp.num_vars - pp.num_rounds),
                 coeffs.len(),
                 pp.log_rate,
                 basecode,
-                &pp.table);
-
-
-
-	//If using repetition code as basecode, it may be faster to use the following line of code to create the commitment and comment out the two lines above
-//        let mut commitment = evaluate_over_foldable_domain(pp.log_rate, coeffs, &pp.table);
-
+                &pp.table,
+            );
+        } else {
+            commitment = evaluate_over_foldable_domain(pp.log_rate, coeffs, &pp.table);
+        }
 
         reverse_index_bits_in_place(&mut bh_evals);
         reverse_index_bits_in_place(&mut commitment);
@@ -308,8 +310,7 @@ where
         eval: &F,
         transcript: &mut impl TranscriptWrite<Self::CommitmentChunk, F>,
     ) -> Result<(), Error> {
-        let cp = Instant::now();
-        let (trees, sum_check_oracles, mut oracles, bh_evals, eq, eval) = commit_phase(
+        let (trees, sum_check_oracles, mut oracles,mut bh_evals, mut eq, eval) = commit_phase(
             &point,
             &comm,
             transcript,
@@ -318,16 +319,16 @@ where
             &pp.table_w_weights,
         );
 
-
         let (queried_els, queries_usize_) =
             query_phase(transcript, &comm, &oracles, pp.num_verifier_queries);
 
         // a proof consists of roots, merkle paths, query paths, sum check oracles, eval, and final oracle
-        //write sum check oracles
+
 
         transcript.write_field_element(&eval); //write eval
 
         if pp.num_rounds < pp.num_vars {
+	    println!("bh evals {:?}", bh_evals);
             transcript.write_field_elements(&bh_evals); //write bh_evals
             transcript.write_field_elements(&eq); //write eq
         }
@@ -370,14 +371,14 @@ where
         transcript: &mut impl TranscriptWrite<Self::CommitmentChunk, F>,
     ) -> Result<(), Error> {
         use std::env;
-	
+
         let polys = polys.into_iter().collect_vec();
         let comms = comms.into_iter().collect_vec();
 
         validate_input("batch open", pp.num_vars, polys.clone(), points)?;
-	for comm in &comms{
-	    transcript.write_commitment(&comm.as_ref());
-	}
+        for comm in &comms {
+            transcript.write_commitment(&comm.as_ref());
+        }
         let ell = evals.len().next_power_of_two().ilog2() as usize;
         let t = transcript.squeeze_challenges(ell);
 
@@ -450,15 +451,13 @@ where
             let now = Instant::now();
             let comm = Self::Commitment::sum_with_scalar(&scalars, bases);
 
-
-
             (comm, g_prime.evaluate(&challenges))
         } else {
             (Self::Commitment::default(), F::ZERO)
         };
-	let mut bh_evals = g_prime.evals().to_vec();
-	reverse_index_bits_in_place(&mut bh_evals);
-	comm.bh_evals = bh_evals;
+        let mut bh_evals = g_prime.evals().to_vec();
+        reverse_index_bits_in_place(&mut bh_evals);
+        comm.bh_evals = bh_evals;
         let point = challenges;
 
         let (trees, sum_check_oracles, mut oracles, bh_evals, eq, eval) = commit_phase(
@@ -586,19 +585,18 @@ where
         let mut fold_challenges: Vec<F> = Vec::with_capacity(vp.num_vars);
         let mut size = 0;
         let mut roots = Vec::new();
-	let mut sum_check_oracles = Vec::new();
+        let mut sum_check_oracles = Vec::new();
         for i in 0..vp.num_rounds {
             roots.push(transcript.read_commitment().unwrap());
-	    sum_check_oracles.push(transcript.read_field_elements(3).unwrap());
+            sum_check_oracles.push(transcript.read_field_elements(3).unwrap());
             fold_challenges.push(transcript.squeeze_challenge());
         }
-        size = size + 256 * vp.num_rounds;
 
 
         let mut query_challenges = transcript.squeeze_challenges(vp.num_verifier_queries);
 
-        size = size + field_size * (3 * (vp.num_rounds + 1)); 
-                                                              //read eval
+        size = size + field_size * (3 * (vp.num_rounds + 1));
+        //read eval
 
         let eval = &transcript.read_field_element().unwrap(); //do not need eval in proof
 
@@ -608,6 +606,7 @@ where
             bh_evals = transcript
                 .read_field_elements(1 << (vp.num_vars - vp.num_rounds))
                 .unwrap();
+	    println!("bh evals {:?}", bh_evals);
             eq = transcript
                 .read_field_elements(1 << (vp.num_vars - vp.num_rounds))
                 .unwrap();
@@ -674,7 +673,7 @@ where
             &eval,
         );
 
-        if (!vp.basecode) {
+        if (!vp.rs_basecode) {
             virtual_open(
                 vp.num_vars,
                 vp.num_rounds,
@@ -687,6 +686,25 @@ where
                 &mut sum_check_oracles,
             );
         }
+	else{
+	    let message_size = 1 << (vp.num_vars - vp.num_rounds);
+	    let rate = 1 << vp.log_rate;
+
+	    let (mut coeffs) = interpolate_over_boolean_hypercube(bh_evals);
+	    let domain: Vec<F> = steps(F::ONE).take(message_size * rate).collect();	    
+	    println!("result coeffs {:?}", coeffs);
+
+	    reverse_index_bits_in_place(&mut coeffs);
+
+            let mut target = vec![F::ZERO; message_size * rate];
+            target
+                .iter_mut()
+                .enumerate()
+                .for_each(|(i, target)| *target = horner(&coeffs[..], &domain[i]));
+
+            assert_eq!(target,final_oracle);	    
+
+	}
         Ok(())
     }
 
@@ -701,7 +719,7 @@ where
 
         let comms = comms.into_iter().collect_vec();
         validate_input("batch verify", vp.num_vars, [], points)?;
-	transcript.read_commitments(comms.len());
+        transcript.read_commitments(comms.len());
 
         let ell = evals.len().next_power_of_two().ilog2() as usize;
 
@@ -724,14 +742,12 @@ where
         //read first $(num_var - 1) commitments
         let mut roots: Vec<Output<H>> = Vec::with_capacity(vp.num_rounds + 1);
         let mut fold_challenges: Vec<F> = Vec::with_capacity(vp.num_rounds);
-	let mut sum_check_oracles = Vec::new();
+        let mut sum_check_oracles = Vec::new();
         for i in 0..vp.num_rounds {
             roots.push(transcript.read_commitment().unwrap());
-	    sum_check_oracles.push(transcript.read_field_elements(3).unwrap());
+            sum_check_oracles.push(transcript.read_field_elements(3).unwrap());
             fold_challenges.push(transcript.squeeze_challenge());
         }
-
-
 
         let mut bh_evals = Vec::new();
         let mut eq = Vec::new();
@@ -777,8 +793,6 @@ where
         }
 
         let mut count = 0;
-
-
 
         //read eval
         let eval = transcript.read_field_element().unwrap();
@@ -867,29 +881,46 @@ where
                 count += 1;
             }
         }
-	if(!vp.basecode){
-        virtual_open(
-            vp.num_vars,
-            vp.num_rounds,
-            &mut eq,
-            &mut bh_evals,
-            &mut final_oracle,
-            &verify_point,
-            &mut fold_challenges,
-            &vp.table_w_weights,
-            &mut sum_check_oracles,
-        );
-}
+        if (!vp.rs_basecode) {
+            virtual_open(
+                vp.num_vars,
+                vp.num_rounds,
+                &mut eq,
+                &mut bh_evals,
+                &mut final_oracle,
+                &verify_point,
+                &mut fold_challenges,
+                &vp.table_w_weights,
+                &mut sum_check_oracles,
+            );
+        }
+	else{
+	    let message_size = 1 << (vp.num_vars - vp.num_rounds);
+	    let rate = 1 << vp.log_rate;
+	    let (mut coeffs,_) = interpolate_over_boolean_hypercube_with_copy(&bh_evals);
+	    let domain: Vec<F> = steps(F::ONE).take(message_size * rate).collect();	    
+	    println!("result coeffs {:?}", coeffs);
+
+	    reverse_index_bits_in_place(&mut coeffs);
+
+            let mut target = vec![F::ZERO; message_size * rate];
+            target
+                .iter_mut()
+                .enumerate()
+                .for_each(|(i, target)| *target = horner(&coeffs[..], &domain[i]));
+
+            assert_eq!(target,final_oracle);
+	}
         Ok(())
     }
 }
 #[test]
 fn test_evaluate_generic_basecode() {
+    use crate::pcs::multilinear::basefold::test::Five;
     use blake2::Blake2s256;
     use rand::rngs::OsRng;
-    use crate::pcs::multilinear::basefold::test::Five;
 
-    type Pcs = Basefold<Mersenne61, Blake2s256,Five>;
+    type Pcs = Basefold<Mersenne61, Blake2s256, Five>;
     let mut rng = OsRng;
     let mut poly = MultilinearPolynomial::rand(10, OsRng);
     let mut t_rng = ChaCha8Rng::from_entropy();
@@ -921,26 +952,26 @@ fn time_rs_code() {
     let rate = 2;
     let now = Instant::now();
     let evals = encode_rs_basecode::<Mersenne61>(&poly.evals().to_vec(), 2, 64);
-    //    println!("rs time {:?}", now.elapsed().as_millis());
-    //    println!("evals {:?}", evals.len());
+
 }
 fn encode_rs_basecode<F: PrimeField>(
     poly: &Vec<F>,
     rate: usize,
     message_size: usize,
 ) -> Vec<Vec<F>> {
-
     let domain: Vec<F> = steps(F::ONE).take(message_size * rate).collect();
-    let res = poly.par_chunks_exact(message_size)
+    let res = poly
+        .par_chunks_exact(message_size)
         .map(|chunk| {
             let mut target = vec![F::ZERO; message_size * rate];
-	    target
-	    .iter_mut()
-	    .enumerate()
-	    .for_each(|(i,target)| *target = horner(&chunk[..], &domain[i]));
+            target
+                .iter_mut()
+                .enumerate()
+                .for_each(|(i, target)| *target = horner(&chunk[..], &domain[i]));
             target
         })
         .collect::<Vec<Vec<F>>>();
+
 
     res
 }
@@ -963,15 +994,27 @@ pub fn evaluate_over_foldable_domain_generic_basecode<F: PrimeField>(
     mut base_codewords: Vec<Vec<F>>,
     table: &Vec<Vec<F>>,
 ) -> Vec<F> {
+
     let k = num_coeffs;
     let logk = log2_strict(k);
     let cl = 1 << (logk + log_rate);
+
     let rate = 1 << log_rate;
     let base_log_k = log2_strict(base_message_length);
-    //concatenate together all base codewords
-//    let now = Instant::now();
-    let mut coeffs_with_bc: Vec<F> = base_codewords.iter().flatten().map(|x| *x).collect();
-//    println!("concatenate base codewords {:?}", now.elapsed());
+    let bcl = 1 << (base_log_k + log_rate);
+    
+
+    //let mut coeffs_with_bc: Vec<F> = base_codewords.iter().flatten().map(|x| *x).collect();
+    let mut coeffs_with_bc = vec![F::ZERO;cl];
+    
+
+    for i in 0..bcl{
+	let segs = base_codewords.len();
+	for j in 0..segs{
+	    coeffs_with_bc[i*segs + j] = base_codewords[j][i];
+	}
+    }
+
     //iterate over array, replacing even indices with (evals[i] - evals[(i+1)])
     let mut chunk_size = base_codewords[0].len(); //block length of the base code
     for i in base_log_k..logk {
@@ -1002,13 +1045,11 @@ pub fn evaluate_over_foldable_domain<F: PrimeField>(
     let logk = log2_strict(k);
     let cl = 1 << (logk + log_rate);
     let rate = 1 << log_rate;
-    let mut coeffs_with_rep = Vec::with_capacity(cl);
-    for i in 0..cl {
-        coeffs_with_rep.push(F::ZERO);
-    }
+
+    let mut coeffs_with_rep = vec![F::ZERO; cl];
 
     //base code - in this case is the repetition code
-    let now = Instant::now();
+
     for i in 0..k {
         for j in 0..rate {
             coeffs_with_rep[i * rate + j] = coeffs[i];
@@ -1504,11 +1545,15 @@ pub fn query_point<F: PrimeField>(
     eval_index: usize,
     mut rng: &mut ChaCha8Rng,
     level: usize,
-    mut cipher: &mut ctr::Ctr32LE<aes::Aes128>
+    mut cipher: &mut ctr::Ctr32LE<aes::Aes128>,
 ) -> F {
     let level_index = eval_index % (block_length);
-    let mut el =
-        query_root_table_from_rng_aes::<F>(level, (level_index % (block_length >> 1)), &mut rng, &mut cipher);
+    let mut el = query_root_table_from_rng_aes::<F>(
+        level,
+        (level_index % (block_length >> 1)),
+        &mut rng,
+        &mut cipher,
+    );
 
     if level_index >= (block_length >> 1) {
         el = -F::ONE * el;
@@ -1544,9 +1589,8 @@ pub fn query_root_table_from_rng_aes<F: PrimeField>(
     level: usize,
     index: usize,
     rng: &mut ChaCha8Rng,
-    cipher: &mut ctr::Ctr32LE<aes::Aes128>
+    cipher: &mut ctr::Ctr32LE<aes::Aes128>,
 ) -> F {
-
     let mut level_offset: u128 = 1;
     for lg_m in 1..=level {
         let half_m = 1 << (lg_m - 1);
@@ -1557,7 +1601,6 @@ pub fn query_root_table_from_rng_aes<F: PrimeField>(
         * ((F::NUM_BITS as usize).next_power_of_two() as u128))
         .checked_div(8)
         .unwrap();
-
 
     cipher.seek(pos);
 
@@ -1654,6 +1697,7 @@ mod test {
         util::{
             hash::{Hash, Keccak256, Output},
             new_fields::{Mersenne127, Mersenne61},
+	    play_field::PlayField,
             transcript::{Blake2sTranscript, Keccak256Transcript},
         },
     };
@@ -1665,32 +1709,33 @@ mod test {
     use std::io;
 
     use crate::pcs::multilinear::basefold::Instant;
+    use crate::pcs::multilinear::BasefoldExtParams;
     use crate::util::arithmetic::PrimeField;
     use blake2::{digest::FixedOutputReset, Blake2s256};
     use halo2_curves::bn256::{Bn256, Fr};
-    use crate::pcs::multilinear::BasefoldExtParams;
 
-
-    type Pcs = Basefold<Fp, Blake2s256,Five>;
+    type Pcs = Basefold<PlayField, Blake2s256, Five>;
 
     #[derive(Debug)]
-    pub struct Five {
+    pub struct Five {}
+
+    impl BasefoldExtParams for Five {
+        fn get_reps() -> usize {
+            return 260;
+        }
+
+        fn get_rate() -> usize {
+            return 1;
+        }
+
+        fn get_basecode_rounds() -> usize {
+            return 0;
+        }
+        fn get_rs_basecode() -> bool {
+            false
+        }
     }
 
-    impl BasefoldExtParams for Five{
-    fn get_reps()->usize{
-	return 260;
-    }
-
-    fn get_rate()->usize{
-	return 3;
-    }
-
-    fn get_basecode()->usize{
-	return 0;
-    }
-}    
-    
     #[test]
     fn commit_open_verify() {
         run_commit_open_verify::<_, Pcs, Blake2sTranscript<_>>();
@@ -1798,21 +1843,18 @@ mod test {
         let mut iv: [u8; 16] = [024; 16];
         rng.fill_bytes(&mut key);
         rng.fill_bytes(&mut iv);
-//	rng.set_word_pos(0);
+        //	rng.set_word_pos(0);
 
-	let mut key2: [u8; 16] = [042; 16];
-	let mut iv2:[u8;16] = [024;16];
-	rng.fill_bytes(&mut key2);
-	rng.fill_bytes(&mut iv2);
+        let mut key2: [u8; 16] = [042; 16];
+        let mut iv2: [u8; 16] = [024; 16];
+        rng.fill_bytes(&mut key2);
+        rng.fill_bytes(&mut iv2);
 
-
-	
         let plaintext = *b"hello world! this is my plaintext.";
         let ciphertext =
             hex!("3357121ebb5a29468bd861467596ce3da59bdee42dcc0614dea955368d8a5dc0cad4");
         let mut buf = plaintext.to_vec();
         let mut buf1 = [0u8; 100];
-
 
         let mut cipher = Aes128Ctr64LE::new(
             GenericArray::from_slice(&key[..]),
@@ -1822,11 +1864,11 @@ mod test {
         cipher.apply_keystream(&mut buf1[..]);
         println!("aes hash 34 bytes {:?}", hash_time.elapsed());
         println!("buf1 {:?}", buf1);
-	for i in 0..40{
-	        let now = Instant::now();
-		 cipher.seek((1 << i) as u64);
-		 println!("aes seek {:?} : {:?}", (1 << i), now.elapsed());
-		 }
+        for i in 0..40 {
+            let now = Instant::now();
+            cipher.seek((1 << i) as u64);
+            println!("aes seek {:?} : {:?}", (1 << i), now.elapsed());
+        }
         let mut bufnew = [0u8; 1];
         cipher.apply_keystream(&mut bufnew);
 
@@ -1923,7 +1965,7 @@ fn virtual_open<F: PrimeField>(
     for round in 0..rounds {
         let challenge: F = rand_chacha(&mut rng);
         challenges.push(challenge);
-        let now = Instant::now();
+
         sum_check_oracles.push(sum_check_challenge_round(eq, bh_evals, challenge));
 
         oracles.push(basefold_one_round_by_interpolation_weights::<F>(
@@ -1973,7 +2015,7 @@ fn commit_phase<F: PrimeField, H: Hash>(
     let mut root = new_tree[new_tree.len() - 1][0].clone();
     let mut new_oracle = &comm.codeword;
 
-    let num_rounds = num_rounds; 
+    let num_rounds = num_rounds;
     let mut eq = build_eq_x_r_vec::<F>(&point).unwrap();
 
     let mut eval = F::ZERO;
@@ -1989,13 +2031,12 @@ fn commit_phase<F: PrimeField, H: Hash>(
 
     for i in 0..(num_rounds) {
         transcript.write_commitment(&root).unwrap();
-	transcript.write_field_elements(&sum_check_oracle);
-	
+        transcript.write_field_elements(&sum_check_oracle);
+
         let challenge: F = transcript.squeeze_challenge();
-
-	sum_check_oracle = sum_check_challenge_round(&mut eq, &mut bh_evals, challenge);
+	println!("challenge  {:?}, {:?}", challenge, i);
+        sum_check_oracle = sum_check_challenge_round(&mut eq, &mut bh_evals, challenge);
         sum_check_oracles_vec.push(sum_check_oracle.clone());
-
 
         oracles.push(basefold_one_round_by_interpolation_weights::<F>(
             &table_w_weights,
@@ -2010,7 +2051,6 @@ fn commit_phase<F: PrimeField, H: Hash>(
 
         root = trees[i][trees[i].len() - 1][0].clone();
     }
-
 
     return (trees, sum_check_oracles_vec, oracles, bh_evals, eq, eval);
 }
@@ -2085,7 +2125,7 @@ fn verifier_query_phase<F: PrimeField, H: Hash>(
         .par_iter_mut()
         .enumerate()
         .for_each(|(qi, query_index)| {
-	    let mut cipher = cipher.clone();
+            let mut cipher = cipher.clone();
             let mut rng = rng.clone();
             let mut cur_index = *query_index;
             let mut cur_queries = &queries[qi];
@@ -2103,14 +2143,14 @@ fn verifier_query_phase<F: PrimeField, H: Hash>(
                 let ri0 = reverse_bits(cur_index, num_vars + log_rate - i);
                 let ri1 = reverse_bits(other_index, num_vars + log_rate - i);
                 let now = Instant::now();
-                let x0:F = query_point(
+                let x0: F = query_point(
                     1 << (num_vars + log_rate - i),
                     ri0,
                     &mut rng,
                     num_vars + log_rate - i - 1,
-		    &mut cipher
+                    &mut cipher,
                 );
-		let x1 = -x0;
+                let x1 = -x0;
 
                 let res = interpolate2(
                     [(x0, cur_queries[i][0]), (x1, cur_queries[i][1])],
@@ -2235,8 +2275,6 @@ fn get_table_aes<F: PrimeField>(
     let bytes = (F::NUM_BITS as usize).next_power_of_two() * (1 << lg_n) / 8;
     let mut dest: Vec<u8> = vec![0u8; bytes];
     cipher.apply_keystream(&mut dest[..]);
-
-
 
     let flat_table: Vec<F> = dest
         .par_chunks_exact((F::NUM_BITS as usize).next_power_of_two() / 8)

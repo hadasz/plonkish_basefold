@@ -9,6 +9,7 @@ pub mod ff_255;
 pub mod goldilocksMont;
 pub mod transcript;
 pub mod new_fields;
+pub mod play_field;
 pub mod mersenne_61_mont;
 pub use itertools::{chain, izip, Itertools};
 pub use num_bigint::BigUint;
