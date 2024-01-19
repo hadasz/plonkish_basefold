@@ -256,6 +256,7 @@ where
                 &pp.table,
             );
         } else {
+	    println!("correc tcommitmenet");
             commitment = evaluate_over_foldable_domain(pp.log_rate, coeffs, &pp.table);
         }
 
@@ -591,7 +592,7 @@ where
             sum_check_oracles.push(transcript.read_field_elements(3).unwrap());
             fold_challenges.push(transcript.squeeze_challenge());
         }
-
+        sum_check_oracles.push(transcript.read_field_elements(3).unwrap());
 
         let mut query_challenges = transcript.squeeze_challenges(vp.num_verifier_queries);
 
@@ -1729,7 +1730,7 @@ mod test {
         }
 
         fn get_basecode_rounds() -> usize {
-            return 0;
+            return 2;
         }
         fn get_rs_basecode() -> bool {
             false
@@ -1986,6 +1987,7 @@ fn virtual_open<F: PrimeField>(
         eq_r_ = eq_r_ * (challenges[i] * point[i] + (F::ONE - challenges[i]) * (F::ONE - point[i]));
     }
     let last_challenge = challenges[challenges.len() - 1];
+
     assert_eq!(
         degree_2_eval(&sum_check_oracles[challenges.len() - 1], last_challenge),
         eq_r_ * no[0]
@@ -2051,7 +2053,7 @@ fn commit_phase<F: PrimeField, H: Hash>(
 
         root = trees[i][trees[i].len() - 1][0].clone();
     }
-
+    transcript.write_field_elements(&sum_check_oracle);
     return (trees, sum_check_oracles_vec, oracles, bh_evals, eq, eval);
 }
 
