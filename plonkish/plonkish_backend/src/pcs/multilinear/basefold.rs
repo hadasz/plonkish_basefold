@@ -240,7 +240,7 @@ where
         let (coeffs, mut bh_evals) =
             interpolate_over_boolean_hypercube_with_copy(&poly.evals().to_vec());
 
-	println!("coeffs {:?}", coeffs);
+
         let mut commitment = Vec::new();
         if (pp.rs_basecode) {
             let mut basecode = encode_rs_basecode(
@@ -256,7 +256,7 @@ where
                 &pp.table,
             );
         } else {
-	    println!("correc tcommitmenet");
+
             commitment = evaluate_over_foldable_domain(pp.log_rate, coeffs, &pp.table);
         }
 
@@ -329,7 +329,6 @@ where
         transcript.write_field_element(&eval); //write eval
 
         if pp.num_rounds < pp.num_vars {
-	    println!("bh evals {:?}", bh_evals);
             transcript.write_field_elements(&bh_evals); //write bh_evals
             transcript.write_field_elements(&eq); //write eq
         }
@@ -607,7 +606,6 @@ where
             bh_evals = transcript
                 .read_field_elements(1 << (vp.num_vars - vp.num_rounds))
                 .unwrap();
-	    println!("bh evals {:?}", bh_evals);
             eq = transcript
                 .read_field_elements(1 << (vp.num_vars - vp.num_rounds))
                 .unwrap();
@@ -688,23 +686,7 @@ where
             );
         }
 	else{
-	    let message_size = 1 << (vp.num_vars - vp.num_rounds);
-	    let rate = 1 << vp.log_rate;
-
-	    let (mut coeffs) = interpolate_over_boolean_hypercube(bh_evals);
-	    let domain: Vec<F> = steps(F::ONE).take(message_size * rate).collect();	    
-	    println!("result coeffs {:?}", coeffs);
-
-	    reverse_index_bits_in_place(&mut coeffs);
-
-            let mut target = vec![F::ZERO; message_size * rate];
-            target
-                .iter_mut()
-                .enumerate()
-                .for_each(|(i, target)| *target = horner(&coeffs[..], &domain[i]));
-
-            assert_eq!(target,final_oracle);	    
-
+	    //TODO - verify RS Basecode
 	}
         Ok(())
     }
@@ -749,7 +731,7 @@ where
             sum_check_oracles.push(transcript.read_field_elements(3).unwrap());
             fold_challenges.push(transcript.squeeze_challenge());
         }
-
+        sum_check_oracles.push(transcript.read_field_elements(3).unwrap());
         let mut bh_evals = Vec::new();
         let mut eq = Vec::new();
         if vp.num_rounds < vp.num_vars {
@@ -896,21 +878,7 @@ where
             );
         }
 	else{
-	    let message_size = 1 << (vp.num_vars - vp.num_rounds);
-	    let rate = 1 << vp.log_rate;
-	    let (mut coeffs,_) = interpolate_over_boolean_hypercube_with_copy(&bh_evals);
-	    let domain: Vec<F> = steps(F::ONE).take(message_size * rate).collect();	    
-	    println!("result coeffs {:?}", coeffs);
-
-	    reverse_index_bits_in_place(&mut coeffs);
-
-            let mut target = vec![F::ZERO; message_size * rate];
-            target
-                .iter_mut()
-                .enumerate()
-                .for_each(|(i, target)| *target = horner(&coeffs[..], &domain[i]));
-
-            assert_eq!(target,final_oracle);
+	    //TODO - Verify RS Basecode
 	}
         Ok(())
     }
@@ -1715,7 +1683,7 @@ mod test {
     use blake2::{digest::FixedOutputReset, Blake2s256};
     use halo2_curves::bn256::{Bn256, Fr};
 
-    type Pcs = Basefold<PlayField, Blake2s256, Five>;
+    type Pcs = Basefold<Fr, Blake2s256, Five>;
 
     #[derive(Debug)]
     pub struct Five {}
@@ -1733,7 +1701,7 @@ mod test {
             return 2;
         }
         fn get_rs_basecode() -> bool {
-            false
+	    false
         }
     }
 

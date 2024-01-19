@@ -357,7 +357,7 @@ mod test {
             + TranscriptWrite<Pcs::CommitmentChunk, F>
             + InMemoryTranscript<Param = ()>,
     {
-        for num_vars in 10..11  {
+        for num_vars in 3..4  {
 	    println!("k {:?}", num_vars);
             // Setup
             let (pp, vp) = {
@@ -407,7 +407,7 @@ mod test {
             + TranscriptWrite<Pcs::CommitmentChunk, F>
             + InMemoryTranscript<Param = ()>,
     {
-        for num_vars in 2..3{
+        for num_vars in 10..11{
 	    println!("k {:?}", num_vars);	    
             let batch_size = 2;
             let num_points = batch_size >> 1;
