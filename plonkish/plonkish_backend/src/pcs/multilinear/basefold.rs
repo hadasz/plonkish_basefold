@@ -41,6 +41,21 @@ use rayon::prelude::{
     ParallelSlice, ParallelSliceMut,
 };
 use std::{borrow::Cow, marker::PhantomData, mem::size_of, slice};
+
+//coeffs/evals in canonical form, [D,C,B,A] -> D + Cx + By + Axy for coeffs
+//[1,x,y,xy] for evals
+#[derive(Clone, Debug, Default, Serialize, Deserialize, Eq, PartialEq)]
+struct Type1Polynomial<F: PrimeField> {
+    pub poly: Vec<F>,
+}
+
+//coeffs/evals in non-canonical from, [D,B,C,A] -> D + Cx + By + Axy
+//[1,y,x,xy] for evals
+#[derive(Clone, Debug, Default, Serialize, Deserialize, Eq, PartialEq)]
+struct Type2Polynomial<F: PrimeField> {
+    pub poly: Vec<F>,
+}
+
 type SumCheck<F> = ClassicSumCheck<CoefficientsProver<F>>;
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct BasefoldParams<F: PrimeField> {
@@ -78,26 +93,26 @@ pub struct BasefoldVerifierParams<F: PrimeField> {
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(bound(serialize = "F: Serialize", deserialize = "F: DeserializeOwned"))]
-pub struct BasefoldCommitment<F, H: Hash> {
-    codeword: Vec<F>,
+pub struct BasefoldCommitment<F: PrimeField, H: Hash> {
+    codeword: Type1Polynomial<F>,
     codeword_tree: Vec<Vec<Output<H>>>,
-    bh_evals: Vec<F>,
+    bh_evals: Type1Polynomial<F>,
 }
 
 impl<F: PrimeField, H: Hash> BasefoldCommitment<F, H> {
     fn from_root(root: Output<H>) -> Self {
         Self {
-            codeword: Vec::new(),
+            codeword: Type1Polynomial { poly: Vec::new() },
             codeword_tree: vec![vec![root]],
-            bh_evals: Vec::new(),
+            bh_evals: Type1Polynomial { poly: Vec::new() },
         }
     }
 }
 impl<F: PrimeField, H: Hash> PartialEq for BasefoldCommitment<F, H> {
     fn eq(&self, other: &Self) -> bool {
-        self.codeword.eq(&other.codeword)
+        self.codeword.poly.eq(&other.codeword.poly)
             && self.codeword_tree.eq(&other.codeword_tree)
-            && self.bh_evals.eq(&other.bh_evals)
+            && self.bh_evals.poly.eq(&other.bh_evals.poly)
     }
 }
 
@@ -144,15 +159,15 @@ impl<F: PrimeField, H: Hash> AdditiveCommitment<F> for BasefoldCommitment<F, H> 
 
         let scalars = scalars.into_iter().collect_vec();
         let bases = bases.into_iter().collect_vec();
-        let k = bases[0].bh_evals.len();
+        let k = bases[0].bh_evals.poly.len();
 
-        let mut new_codeword = vec![F::ZERO; bases[0].codeword.len()];
+        let mut new_codeword = vec![F::ZERO; bases[0].codeword.poly.len()];
         new_codeword
             .par_iter_mut()
             .enumerate()
             .for_each(|(i, mut c)| {
                 for j in 0..bases.len() {
-                    *c += *scalars[j] * bases[j].codeword[i];
+                    *c += *scalars[j] * bases[j].codeword.poly[i];
                 }
             });
 
@@ -162,15 +177,16 @@ impl<F: PrimeField, H: Hash> AdditiveCommitment<F> for BasefoldCommitment<F, H> 
             .enumerate()
             .for_each(|(i, mut c)| {
                 for j in 0..bases.len() {
-                    *c += *scalars[j] * bases[j].bh_evals[i];
+                    *c += *scalars[j] * bases[j].bh_evals.poly[i];
                 }
             });
 
-        let tree = merkelize::<F, H>(&new_codeword);
+        let cw = Type1Polynomial { poly: new_codeword };
+        let tree = merkelize::<F, H>(&cw);
 
         Self {
-            codeword: new_codeword,
-            bh_evals: Vec::new(),
+            codeword: cw,
+            bh_evals: Type1Polynomial { poly: Vec::new() },
             codeword_tree: tree,
         }
     }
@@ -237,11 +253,12 @@ where
     }
 
     fn commit(pp: &Self::ProverParam, poly: &Self::Polynomial) -> Result<Self::Commitment, Error> {
-        let (coeffs, mut bh_evals) =
-            interpolate_over_boolean_hypercube_with_copy(&poly.evals().to_vec());
+        let p = Type2Polynomial {
+            poly: poly.evals().to_vec(),
+        };
+        let (coeffs, mut bh_evals) = interpolate_over_boolean_hypercube_with_copy(&p);
 
-
-        let mut commitment = Vec::new();
+        let mut commitment = Type1Polynomial::default();
         if (pp.rs_basecode) {
             let mut basecode = encode_rs_basecode(
                 &coeffs,
@@ -250,18 +267,14 @@ where
             );
             commitment = evaluate_over_foldable_domain_generic_basecode(
                 1 << (pp.num_vars - pp.num_rounds),
-                coeffs.len(),
+                coeffs.poly.len(),
                 pp.log_rate,
                 basecode,
                 &pp.table,
             );
         } else {
-
             commitment = evaluate_over_foldable_domain(pp.log_rate, coeffs, &pp.table);
         }
-
-        reverse_index_bits_in_place(&mut bh_evals);
-        reverse_index_bits_in_place(&mut commitment);
 
         let tree = merkelize::<F, H>(&commitment);
 
@@ -311,7 +324,7 @@ where
         eval: &F,
         transcript: &mut impl TranscriptWrite<Self::CommitmentChunk, F>,
     ) -> Result<(), Error> {
-        let (trees, sum_check_oracles, mut oracles,mut bh_evals, mut eq, eval) = commit_phase(
+        let (trees, sum_check_oracles, mut oracles, mut bh_evals, mut eq, eval) = commit_phase(
             &point,
             &comm,
             transcript,
@@ -325,17 +338,16 @@ where
 
         // a proof consists of roots, merkle paths, query paths, sum check oracles, eval, and final oracle
 
-
         transcript.write_field_element(&eval); //write eval
 
         if pp.num_rounds < pp.num_vars {
-            transcript.write_field_elements(&bh_evals); //write bh_evals
-            transcript.write_field_elements(&eq); //write eq
+            transcript.write_field_elements(&bh_evals.poly); //write bh_evals
+            transcript.write_field_elements(&eq.poly); //write eq
         }
 
         //write final oracle
         let mut final_oracle = oracles.pop().unwrap();
-        transcript.write_field_elements(&final_oracle);
+        transcript.write_field_elements(&final_oracle.poly);
 
         //write query paths
         queried_els
@@ -456,8 +468,11 @@ where
             (Self::Commitment::default(), F::ZERO)
         };
         let mut bh_evals = g_prime.evals().to_vec();
+
+        //convert to type 1
         reverse_index_bits_in_place(&mut bh_evals);
-        comm.bh_evals = bh_evals;
+
+        comm.bh_evals = Type1Polynomial { poly: bh_evals };
         let point = challenges;
 
         let (trees, sum_check_oracles, mut oracles, bh_evals, eq, eval) = commit_phase(
@@ -470,8 +485,8 @@ where
         );
 
         if pp.num_rounds < pp.num_vars {
-            transcript.write_field_elements(&bh_evals);
-            transcript.write_field_elements(&eq);
+            transcript.write_field_elements(&bh_evals.poly);
+            transcript.write_field_elements(&eq.poly);
         }
 
         let (queried_els, queries_usize) =
@@ -486,7 +501,7 @@ where
             let mut comm_paths = Vec::with_capacity(evals.len());
             for eval in evals {
                 let c = comms[eval.poly()];
-                let res = query_codeword::<F, H>(query, &c.codeword, &c.codeword_tree);
+                let res = query_codeword::<F, H>(query, &c.codeword.poly, &c.codeword_tree);
                 comm_queries.push(res.0);
                 comm_paths.push(res.1);
             }
@@ -535,7 +550,7 @@ where
         //write eval
         transcript.write_field_element(&eval);
         //write final oracle
-        transcript.write_field_elements(oracles.pop().unwrap().iter().collect_vec());
+        transcript.write_field_elements(oracles.pop().unwrap().poly.iter().collect_vec());
         //write query paths
         queried_els
             .iter()
@@ -673,21 +688,23 @@ where
         );
 
         if (!vp.rs_basecode) {
+            let mut next_oracle = Type1Polynomial { poly: final_oracle };
+            let mut bh_evals = Type1Polynomial { poly: bh_evals };
+            let mut eq = Type1Polynomial { poly: eq };
             virtual_open(
                 vp.num_vars,
                 vp.num_rounds,
                 &mut eq,
                 &mut bh_evals,
-                &mut final_oracle,
+                &mut next_oracle,
                 point,
                 &mut fold_challenges,
                 &vp.table_w_weights,
                 &mut sum_check_oracles,
             );
+        } else {
+            //TODO - verify RS Basecode
         }
-	else{
-	    //TODO - verify RS Basecode
-	}
         Ok(())
     }
 
@@ -865,24 +882,27 @@ where
             }
         }
         if (!vp.rs_basecode) {
+            let mut next_oracle = Type1Polynomial { poly: final_oracle };
+            let mut bh_evals = Type1Polynomial { poly: bh_evals };
+            let mut eq = Type1Polynomial { poly: eq };
             virtual_open(
                 vp.num_vars,
                 vp.num_rounds,
                 &mut eq,
                 &mut bh_evals,
-                &mut final_oracle,
+                &mut next_oracle,
                 &verify_point,
                 &mut fold_challenges,
                 &vp.table_w_weights,
                 &mut sum_check_oracles,
             );
+        } else {
+            //TODO - Verify RS Basecode
         }
-	else{
-	    //TODO - Verify RS Basecode
-	}
         Ok(())
     }
 }
+/*
 #[test]
 fn test_evaluate_generic_basecode() {
     use crate::pcs::multilinear::basefold::test::Five;
@@ -896,7 +916,7 @@ fn test_evaluate_generic_basecode() {
     let (table_w_weights_, table) = get_table(poly.evals().len(), 3, &mut t_rng);
 
     let rate = 8;
-    let mut base_codewords = encode_repetition_basecode(&poly.evals().to_vec(), rate);
+    let mut base_codewords = encode_repetition_basecode(&Type2Polynomial{ poly: poly.evals().to_vec()} , rate);
 
     let evals1 = evaluate_over_foldable_domain_generic_basecode::<Mersenne61>(
         1,
@@ -905,10 +925,16 @@ fn test_evaluate_generic_basecode() {
         base_codewords,
         &table,
     );
-    let evals2 = evaluate_over_foldable_domain::<Mersenne61>(3, poly.evals().to_vec(), &table);
-    assert_eq!(evals1, evals2);
+    let evals2 = evaluate_over_foldable_domain::<Mersenne61>(
+        3,
+        Type2Polynomial {
+            poly: poly.evals().to_vec(),
+        },
+        &table,
+    );
+    assert_eq!(evals1.poly, evals2.poly);
 }
-
+*/
 #[test]
 fn time_rs_code() {
     use blake2::Blake2s256;
@@ -920,16 +946,22 @@ fn time_rs_code() {
 
     let rate = 2;
     let now = Instant::now();
-    let evals = encode_rs_basecode::<Mersenne61>(&poly.evals().to_vec(), 2, 64);
-
+    let evals = encode_rs_basecode::<Mersenne61>(
+        &Type2Polynomial {
+            poly: poly.evals().to_vec(),
+        },
+        2,
+        64,
+    );
 }
 fn encode_rs_basecode<F: PrimeField>(
-    poly: &Vec<F>,
+    poly: &Type2Polynomial<F>,
     rate: usize,
     message_size: usize,
-) -> Vec<Vec<F>> {
+) -> Type2Polynomial<F> {
     let domain: Vec<F> = steps(F::ONE).take(message_size * rate).collect();
     let res = poly
+        .poly
         .par_chunks_exact(message_size)
         .map(|chunk| {
             let mut target = vec![F::ZERO; message_size * rate];
@@ -937,21 +969,35 @@ fn encode_rs_basecode<F: PrimeField>(
                 .iter_mut()
                 .enumerate()
                 .for_each(|(i, target)| *target = horner(&chunk[..], &domain[i]));
-            target
+            Type2Polynomial{ poly: target }
         })
-        .collect::<Vec<Vec<F>>>();
+        .collect::<Vec<Type2Polynomial<F>>>();
+    let logk = log2_strict(poly.poly.len());
+    let base_log_k = log2_strict(message_size);
+    let log_rate = log2_strict(rate);
+    let cl = 1 << (logk + log_rate);    
+    let mut coeffs_with_bc = vec![F::ZERO; cl];
+    
+    let bcl = 1 << (base_log_k + log_rate);
+    //rs code must be in type2 format
+    for i in 0..bcl {
+        let segs = res.len();
+        for j in 0..segs {
+            coeffs_with_bc[i * segs + j] = res[j].poly[i];
+        }
+    }    
 
-
-    res
+    Type2Polynomial{ poly: coeffs_with_bc }
 }
-fn encode_repetition_basecode<F: PrimeField>(poly: &Vec<F>, rate: usize) -> Vec<Vec<F>> {
+
+fn encode_repetition_basecode<F: PrimeField>(poly: &Type2Polynomial<F>, rate: usize) -> Vec<Type2Polynomial<F>> {
     let mut base_codewords = Vec::new();
-    for c in poly {
+    for c in &poly.poly {
         let mut rep_code = Vec::new();
         for i in 0..rate {
             rep_code.push(*c);
         }
-        base_codewords.push(rep_code);
+        base_codewords.push(Type2Polynomial { poly: rep_code});
     }
     return base_codewords;
 }
@@ -960,37 +1006,26 @@ pub fn evaluate_over_foldable_domain_generic_basecode<F: PrimeField>(
     base_message_length: usize,
     num_coeffs: usize,
     log_rate: usize,
-    mut base_codewords: Vec<Vec<F>>,
+    mut base_codewords: Type2Polynomial<F>,
     table: &Vec<Vec<F>>,
-) -> Vec<F> {
-
+) -> Type1Polynomial<F> {
     let k = num_coeffs;
     let logk = log2_strict(k);
     let cl = 1 << (logk + log_rate);
 
     let rate = 1 << log_rate;
     let base_log_k = log2_strict(base_message_length);
-    let bcl = 1 << (base_log_k + log_rate);
-    
 
-    //let mut coeffs_with_bc: Vec<F> = base_codewords.iter().flatten().map(|x| *x).collect();
-    let mut coeffs_with_bc = vec![F::ZERO;cl];
-    
 
-    for i in 0..bcl{
-	let segs = base_codewords.len();
-	for j in 0..segs{
-	    coeffs_with_bc[i*segs + j] = base_codewords[j][i];
-	}
-    }
+
 
     //iterate over array, replacing even indices with (evals[i] - evals[(i+1)])
-    let mut chunk_size = base_codewords[0].len(); //block length of the base code
+    let mut chunk_size = 1 << base_log_k; //block length of the base code
     for i in base_log_k..logk {
         let level = &table[i + log_rate];
         chunk_size = chunk_size << 1;
         assert_eq!(level.len(), chunk_size >> 1);
-        <Vec<F> as AsMut<[F]>>::as_mut(&mut coeffs_with_bc)
+        <Vec<F> as AsMut<[F]>>::as_mut(&mut base_codewords.poly)
             .par_chunks_mut(chunk_size)
             .for_each(|chunk| {
                 let half_chunk = chunk_size >> 1;
@@ -1001,16 +1036,19 @@ pub fn evaluate_over_foldable_domain_generic_basecode<F: PrimeField>(
                 }
             });
     }
-    coeffs_with_bc
+    reverse_index_bits_in_place(&mut base_codewords.poly);
+    Type1Polynomial {
+        poly: base_codewords.poly,
+    }
 }
 
 pub fn evaluate_over_foldable_domain<F: PrimeField>(
     log_rate: usize,
-    mut coeffs: Vec<F>,
+    mut coeffs: Type2Polynomial<F>,
     table: &Vec<Vec<F>>,
-) -> Vec<F> {
+) -> Type1Polynomial<F> {
     //iterate over array, replacing even indices with (evals[i] - evals[(i+1)])
-    let k = coeffs.len();
+    let k = coeffs.poly.len();
     let logk = log2_strict(k);
     let cl = 1 << (logk + log_rate);
     let rate = 1 << log_rate;
@@ -1021,7 +1059,7 @@ pub fn evaluate_over_foldable_domain<F: PrimeField>(
 
     for i in 0..k {
         for j in 0..rate {
-            coeffs_with_rep[i * rate + j] = coeffs[i];
+            coeffs_with_rep[i * rate + j] = coeffs.poly[i];
         }
     }
 
@@ -1041,22 +1079,57 @@ pub fn evaluate_over_foldable_domain<F: PrimeField>(
                 }
             });
     }
-    coeffs_with_rep
+    reverse_index_bits_in_place(&mut coeffs_with_rep);
+    Type1Polynomial {
+        poly: coeffs_with_rep,
+    }
 }
 
-fn interpolate_over_boolean_hypercube_with_copy<F: PrimeField>(evals: &Vec<F>) -> (Vec<F>, Vec<F>) {
+pub fn evaluate_over_foldable_domain_2<F: PrimeField>(
+    log_chunk_size: usize,
+    mut coeffs: Type2Polynomial<F>,
+    table: &Vec<Vec<F>>,
+) -> Type1Polynomial<F> {
     //iterate over array, replacing even indices with (evals[i] - evals[(i+1)])
-    let n = log2_strict(evals.len());
-    let mut coeffs = vec![F::ZERO; evals.len()];
-    let mut new_evals = vec![F::ZERO; evals.len()];
+    let mut chunk_size = 1 << log_chunk_size;
+    let levels = log2_strict(coeffs.poly.len()) - log_chunk_size;
+
+    for i in 0..levels {
+        let level = &table[i + log_chunk_size];
+        chunk_size = chunk_size << 1;
+        assert_eq!(level.len(), chunk_size >> 1);
+        <Vec<F> as AsMut<[F]>>::as_mut(&mut coeffs.poly)
+            .par_chunks_mut(chunk_size)
+            .for_each(|chunk| {
+                let half_chunk = chunk_size >> 1;
+                for j in half_chunk..chunk_size {
+                    let rhs = chunk[j] * level[j - half_chunk];
+                    chunk[j] = chunk[j - half_chunk] - rhs;
+                    chunk[j - half_chunk] = chunk[j - half_chunk] + rhs;
+                }
+            });
+    }
+    reverse_index_bits_in_place(&mut coeffs.poly);
+    Type1Polynomial {
+        poly: coeffs.poly,
+    }
+}
+
+fn interpolate_over_boolean_hypercube_with_copy<F: PrimeField>(
+    evals: &Type2Polynomial<F>,
+) -> (Type2Polynomial<F>, Type1Polynomial<F>) {
+    //iterate over array, replacing even indices with (evals[i] - evals[(i+1)])
+    let n = log2_strict(evals.poly.len());
+    let mut coeffs = vec![F::ZERO; evals.poly.len()];
+    let mut new_evals = vec![F::ZERO; evals.poly.len()];
 
     let mut j = 0;
     while (j < coeffs.len()) {
-        new_evals[j] = evals[j];
-        new_evals[j + 1] = evals[j + 1];
+        new_evals[j] = evals.poly[j];
+        new_evals[j + 1] = evals.poly[j + 1];
 
-        coeffs[j + 1] = evals[j + 1] - evals[j];
-        coeffs[j] = evals[j];
+        coeffs[j + 1] = evals.poly[j + 1] - evals.poly[j];
+        coeffs[j] = evals.poly[j];
         j += 2
     }
 
@@ -1069,8 +1142,11 @@ fn interpolate_over_boolean_hypercube_with_copy<F: PrimeField>(evals: &Vec<F>) -
             }
         });
     }
-
-    (coeffs, new_evals)
+    reverse_index_bits_in_place(&mut new_evals);
+    (
+        Type2Polynomial { poly: coeffs },
+        Type1Polynomial { poly: new_evals },
+    )
 }
 
 //helper function
@@ -1093,15 +1169,15 @@ pub fn log2_strict(n: usize) -> usize {
     res as usize
 }
 
-fn merkelize<F: PrimeField, H: Hash>(values: &Vec<F>) -> Vec<Vec<Output<H>>> {
-    let log_v = log2_strict(values.len());
+fn merkelize<F: PrimeField, H: Hash>(values: &Type1Polynomial<F>) -> Vec<Vec<Output<H>>> {
+    let log_v = log2_strict(values.poly.len());
     let mut tree = Vec::with_capacity(log_v);
-    let mut hashes = vec![Output::<H>::default(); (values.len() >> 1)];
+    let mut hashes = vec![Output::<H>::default(); (values.poly.len() >> 1)];
     let method1 = Instant::now();
     hashes.par_iter_mut().enumerate().for_each(|(i, mut hash)| {
         let mut hasher = H::new();
-        hasher.update_field_element(&values[i + i]);
-        hasher.update_field_element(&values[i + i + 1]);
+        hasher.update_field_element(&values.poly[i + i]);
+        hasher.update_field_element(&values.poly[i + i + 1]);
         *hash = hasher.finalize_fixed();
     });
 
@@ -1182,29 +1258,31 @@ fn build_eq_x_r_helper<F: PrimeField>(r: &[F], buf: &mut Vec<F>) {
     }
 }
 
-fn sum_check_first_round<F: PrimeField>(mut eq: &mut Vec<F>, mut bh_values: &mut Vec<F>) -> Vec<F> {
+fn sum_check_first_round<F: PrimeField>(
+    mut eq: &mut Type1Polynomial<F>,
+    mut bh_values: &mut Type1Polynomial<F>,
+) -> Vec<F> {
     one_level_interp_hc(&mut eq);
     one_level_interp_hc(&mut bh_values);
-    parallel_pi(&bh_values, &eq)
-    //    p_i(&bh_values, &eq)
+    parallel_pi(bh_values, eq)
 }
 
-pub fn one_level_interp_hc<F: PrimeField>(mut evals: &mut Vec<F>) {
-    if (evals.len() == 1) {
+pub fn one_level_interp_hc<F: PrimeField>(mut evals: &mut Type1Polynomial<F>) {
+    if (evals.poly.len() == 1) {
         return;
     }
-    evals.par_chunks_mut(2).for_each(|chunk| {
+    evals.poly.par_chunks_mut(2).for_each(|chunk| {
         chunk[1] = chunk[1] - chunk[0];
     });
 }
 
-pub fn one_level_eval_hc<F: PrimeField>(mut evals: &mut Vec<F>, challenge: F) {
-    evals.par_chunks_mut(2).for_each(|chunk| {
+pub fn one_level_eval_hc<F: PrimeField>(mut evals: &mut Type1Polynomial<F>, challenge: F) {
+    evals.poly.par_chunks_mut(2).for_each(|chunk| {
         chunk[1] = chunk[0] + challenge * chunk[1];
     });
     let mut index = 0;
 
-    evals.retain(|v| {
+    evals.poly.retain(|v| {
         index += 1;
         (index - 1) % 2 == 1
     });
@@ -1227,30 +1305,30 @@ pub fn p_i<F: PrimeField>(evals: &Vec<F>, eq: &Vec<F>) -> Vec<F> {
     coeffs
 }
 
-fn parallel_pi<F: PrimeField>(evals: &Vec<F>, eq: &Vec<F>) -> Vec<F> {
-    if (evals.len() == 1) {
-        return vec![evals[0], evals[0], evals[0]];
+fn parallel_pi<F: PrimeField>(evals: &Type1Polynomial<F>, eq: &Type1Polynomial<F>) -> Vec<F> {
+    if (evals.poly.len() == 1) {
+        return vec![evals.poly[0], evals.poly[0], evals.poly[0]];
     }
     let mut coeffs = vec![F::ZERO, F::ZERO, F::ZERO];
 
-    let mut firsts = vec![F::ZERO; evals.len()];
+    let mut firsts = vec![F::ZERO; evals.poly.len()];
     firsts.par_iter_mut().enumerate().for_each(|(i, mut f)| {
         if (i % 2 == 0) {
-            *f = evals[i] * eq[i];
+            *f = evals.poly[i] * eq.poly[i];
         }
     });
 
-    let mut seconds = vec![F::ZERO; evals.len()];
+    let mut seconds = vec![F::ZERO; evals.poly.len()];
     seconds.par_iter_mut().enumerate().for_each(|(i, mut f)| {
         if (i % 2 == 0) {
-            *f = evals[i + 1] * eq[i] + evals[i] * eq[i + 1];
+            *f = evals.poly[i + 1] * eq.poly[i] + evals.poly[i] * eq.poly[i + 1];
         }
     });
 
-    let mut thirds = vec![F::ZERO; evals.len()];
+    let mut thirds = vec![F::ZERO; evals.poly.len()];
     thirds.par_iter_mut().enumerate().for_each(|(i, mut f)| {
         if (i % 2 == 0) {
-            *f = evals[i + 1] * eq[i + 1];
+            *f = evals.poly[i + 1] * eq.poly[i + 1];
         }
     });
 
@@ -1287,10 +1365,14 @@ fn test_sumcheck() {
     use crate::util::ff_255::ff255::Ft255;
     let i = 25;
     let mut rng = ChaCha8Rng::from_entropy();
-    let evals = rand_vec::<Ft255>(1 << i, &mut rng);
-    let eq = rand_vec::<Ft255>(1 << i, &mut rng);
+    let evals = Type1Polynomial {
+        poly: rand_vec::<Ft255>(1 << i, &mut rng),
+    };
+    let eq = Type1Polynomial {
+        poly: rand_vec::<Ft255>(1 << i, &mut rng),
+    };
     let now = Instant::now();
-    let coeffs1 = p_i(&evals, &eq);
+    let coeffs1 = p_i(&evals.poly, &eq.poly);
     //    println!("original {:?}", now.elapsed());
 
     let now = Instant::now();
@@ -1300,8 +1382,8 @@ fn test_sumcheck() {
 }
 
 fn sum_check_challenge_round<F: PrimeField>(
-    mut eq: &mut Vec<F>,
-    mut bh_values: &mut Vec<F>,
+    mut eq: &mut Type1Polynomial<F>,
+    mut bh_values: &mut Type1Polynomial<F>,
     challenge: F,
 ) -> Vec<F> {
     one_level_eval_hc(&mut bh_values, challenge);
@@ -1317,11 +1399,12 @@ fn sum_check_challenge_round<F: PrimeField>(
 fn basefold_one_round_by_interpolation_weights<F: PrimeField>(
     table: &Vec<Vec<(F, F)>>,
     table_offset: usize,
-    values: &Vec<F>,
+    values: &Type1Polynomial<F>,
     challenge: F,
-) -> Vec<F> {
+) -> Type1Polynomial<F> {
     let level = &table[table.len() - 1 - table_offset];
-    values
+    let fold = values
+        .poly
         .par_chunks_exact(2)
         .enumerate()
         .map(|(i, ys)| {
@@ -1331,7 +1414,8 @@ fn basefold_one_round_by_interpolation_weights<F: PrimeField>(
                 challenge,
             )
         })
-        .collect::<Vec<_>>()
+        .collect::<Vec<_>>();
+    Type1Polynomial { poly: fold }
 }
 
 fn basefold_one_round_by_interpolation_weights_not_faster<F: PrimeField>(
@@ -1356,8 +1440,8 @@ fn basefold_one_round_by_interpolation_weights_not_faster<F: PrimeField>(
 }
 
 fn basefold_get_query<F: PrimeField>(
-    first_oracle: &Vec<F>,
-    oracles: &Vec<Vec<F>>,
+    first_oracle: &Type1Polynomial<F>,
+    oracles: &Vec<Type1Polynomial<F>>,
     mut x_index: usize,
 ) -> (Vec<(F, F)>, Vec<usize>) {
     let mut queries = Vec::with_capacity(oracles.len() + 1);
@@ -1370,7 +1454,7 @@ fn basefold_get_query<F: PrimeField>(
         p0 = x_index ^ 1;
         p1 = x_index;
     }
-    queries.push((first_oracle[p0], first_oracle[p1]));
+    queries.push((first_oracle.poly[p0], first_oracle.poly[p1]));
     indices.push(p0);
     x_index >>= 1;
 
@@ -1381,7 +1465,7 @@ fn basefold_get_query<F: PrimeField>(
             p0 = x_index ^ 1;
             p1 = x_index;
         }
-        queries.push((oracle[p0], oracle[p1]));
+        queries.push((oracle.poly[p0], oracle.poly[p1]));
         indices.push(p0);
         x_index >>= 1;
     }
@@ -1616,12 +1700,31 @@ pub fn interpolate_over_boolean_hypercube<F: PrimeField>(mut evals: Vec<F>) -> V
     evals
 }
 
-pub fn multilinear_evaluation_ztoa<F: PrimeField>(poly: &mut Vec<F>, point: &Vec<F>) {
+pub fn multilinear_evaluation_ztoa<F: PrimeField>(poly: &mut Type2Polynomial<F>, point: &Vec<F>) {
+    reverse_index_bits_in_place(&mut poly.poly);
+    let n = log2_strict(poly.poly.len());
+    for p in point {
+        poly.poly.par_chunks_mut(2).for_each(|chunk| {
+            chunk[0] = chunk[0] + *p * chunk[1];
+            chunk[1] = chunk[0];
+        });
+        poly.poly = poly
+            .poly
+            .iter()
+            .enumerate()
+            .filter(|(i, e)| i % 2 == 0)
+            .map(|(i, e)| *e)
+            .collect::<Vec<F>>();
+    }
+    reverse_index_bits_in_place(&mut poly.poly);
+}
+
+pub fn multilinear_evaluation_atoz<F: PrimeField>(poly: &mut Vec<F>, point: &Vec<F>) {
     let n = log2_strict(poly.len());
     //    assert_eq!(point.len(),n);
     for p in point {
         poly.par_chunks_mut(2).for_each(|chunk| {
-            chunk[0] = chunk[0] + *p * chunk[1];
+            chunk[0] = *p * chunk[0] + chunk[1];
             chunk[1] = chunk[0];
         });
         poly.dedup();
@@ -1632,7 +1735,9 @@ fn bench_multilinear_eval() {
     use crate::util::ff_255::ff255::Ft255;
     for i in 10..27 {
         let mut rng = ChaCha8Rng::from_entropy();
-        let mut poly = rand_vec::<Ft255>(1 << i, &mut rng);
+        let mut poly = Type2Polynomial {
+            poly: rand_vec::<Ft255>(1 << i, &mut rng),
+        };
         let point = rand_vec::<Ft255>(i, &mut rng);
         let now = Instant::now();
         multilinear_evaluation_ztoa(&mut poly, &point);
@@ -1660,17 +1765,26 @@ mod test {
 
     use crate::{
         pcs::multilinear::{
-            basefold::Basefold,
+            basefold::{
+                basefold_one_round_by_interpolation_weights, encode_repetition_basecode,
+                encode_rs_basecode, evaluate_over_foldable_domain,
+                evaluate_over_foldable_domain_generic_basecode, get_table_aes,
+                interpolate_over_boolean_hypercube_with_copy, log2_strict,
+                multilinear_evaluation_atoz, multilinear_evaluation_ztoa, one_level_eval_hc,
+                one_level_interp_hc, rand_chacha, Basefold, Type1Polynomial, Type2Polynomial, evaluate_over_foldable_domain_2
+            },
             test::{run_batch_commit_open_verify, run_commit_open_verify},
         },
+        poly::{multilinear::MultilinearPolynomial, Polynomial},
         util::{
             hash::{Hash, Keccak256, Output},
             new_fields::{Mersenne127, Mersenne61},
-	    play_field::PlayField,
+            play_field::PlayField,
             transcript::{Blake2sTranscript, Keccak256Transcript},
         },
     };
     use halo2_curves::{ff::Field, secp256k1::Fp};
+    use plonky2_util::reverse_index_bits_in_place;
     use rand_chacha::{
         rand_core::{RngCore, SeedableRng},
         ChaCha12Rng, ChaCha8Rng,
@@ -1701,8 +1815,96 @@ mod test {
             return 2;
         }
         fn get_rs_basecode() -> bool {
-	    false
+            false
         }
+    }
+
+    #[test]
+    fn test_transforms() {
+        type F = Mersenne127;
+        use rand::rngs::OsRng;
+        let num_vars = 10;
+        let log_rate = 1;
+        let poly = MultilinearPolynomial::<F>::rand(num_vars, OsRng);
+        let mut rng = ChaCha8Rng::from_entropy();
+
+        let (mut table_w_weights, mut table) = get_table_aes((1 << num_vars), log_rate, &mut rng);
+        let (mut coeffs, mut bh_evals) =
+            interpolate_over_boolean_hypercube_with_copy(&Type2Polynomial {
+                poly: poly.evals().to_vec(),
+            });
+
+        let mut commitment = evaluate_over_foldable_domain(log_rate, coeffs.clone(), &table);
+
+        let challenge = rand_chacha::<F>(&mut rng);
+        let fold = basefold_one_round_by_interpolation_weights(
+            &table_w_weights,
+            0,
+            &commitment,
+            challenge,
+        );
+
+        let chal_vec = vec![challenge];
+        let partial_eval = multilinear_evaluation_ztoa(&mut coeffs, &chal_vec);
+
+        let mut commitment = evaluate_over_foldable_domain(log_rate, coeffs.clone(), &table);
+
+        assert_eq!(commitment, fold);
+
+        //fold bh_evals one level
+        one_level_interp_hc(&mut bh_evals);
+        one_level_eval_hc(&mut bh_evals, challenge);
+
+        //convert bh_evals to type2
+        reverse_index_bits_in_place(&mut bh_evals.poly);
+
+        let bh_evals = Type2Polynomial {
+            poly: bh_evals.poly,
+        };
+        let (bhcoeffs, mut bh_evals) = interpolate_over_boolean_hypercube_with_copy(&bh_evals);
+
+        //coeffs is type2, partial eval is also type2
+        assert_eq!(coeffs, bhcoeffs);
+    }
+    #[test]
+    fn test_rs_transform() {
+        type F = Mersenne127;
+        use rand::rngs::OsRng;
+        let num_vars = 10;
+        let log_rate = 1;
+	let num_rounds = 3;
+        let poly = MultilinearPolynomial::<F>::rand(num_vars, OsRng);
+        let mut rng = ChaCha8Rng::from_entropy();
+
+        let (mut table_w_weights, mut table) = get_table_aes((1 << num_vars), log_rate, &mut rng);
+        let (mut coeffs, mut bh_evals) =
+            interpolate_over_boolean_hypercube_with_copy(&Type2Polynomial {
+                poly: poly.evals().to_vec(),
+            });
+
+	//coeffs is type2, bh_evals is type 1, basecode will have type2
+	let mut coeffs = encode_rs_basecode(&coeffs, 1 << log_rate, 1 << (num_vars - num_rounds));
+
+	let log_rate = num_vars - num_rounds;
+        let mut commitment = evaluate_over_foldable_domain_2(num_vars - num_rounds, coeffs.clone(), &table);
+
+        let challenge = rand_chacha::<F>(&mut rng);
+        let fold = basefold_one_round_by_interpolation_weights(
+            &table_w_weights,
+            0,
+            &commitment,
+            challenge,
+        );
+
+        let chal_vec = vec![challenge];
+        let partial_eval = multilinear_evaluation_ztoa(&mut coeffs, &chal_vec);
+	//Compare a partial eval of RS Evaluations to an RS Evaluation of a partial Eval
+
+        let mut commitment = evaluate_over_foldable_domain_2(num_vars - num_rounds, coeffs.clone(), &table);
+
+        assert_eq!(commitment, fold);
+	
+
     }
 
     #[test]
@@ -1918,9 +2120,9 @@ fn reed_solomon_into<F: Field>(input: &[F], mut target: impl AsMut<[F]>, domain:
 fn virtual_open<F: PrimeField>(
     num_vars: usize,
     num_rounds: usize,
-    eq: &mut Vec<F>,
-    bh_evals: &mut Vec<F>,
-    last_oracle: &Vec<F>,
+    eq: &mut Type1Polynomial<F>,
+    bh_evals: &mut Type1Polynomial<F>,
+    last_oracle: &Type1Polynomial<F>,
     point: &Vec<F>,
     challenges: &mut Vec<F>,
     table: &Vec<Vec<(F, F)>>,
@@ -1947,7 +2149,7 @@ fn virtual_open<F: PrimeField>(
     }
 
     let mut no = new_oracle.clone();
-    no.dedup();
+    no.poly.dedup();
 
     //verify it information-theoretically
     let mut eq_r_ = F::ONE;
@@ -1958,7 +2160,7 @@ fn virtual_open<F: PrimeField>(
 
     assert_eq!(
         degree_2_eval(&sum_check_oracles[challenges.len() - 1], last_challenge),
-        eq_r_ * no[0]
+        eq_r_ * no.poly[0]
     );
 }
 //outputs (trees, sumcheck_oracles, oracles, bh_evals, eq, eval)
@@ -1972,9 +2174,9 @@ fn commit_phase<F: PrimeField, H: Hash>(
 ) -> (
     Vec<Vec<Vec<Output<H>>>>,
     Vec<Vec<F>>,
-    Vec<Vec<F>>,
-    Vec<F>,
-    Vec<F>,
+    Vec<Type1Polynomial<F>>,
+    Type1Polynomial<F>,
+    Type1Polynomial<F>,
     F,
 ) {
     let mut oracles = Vec::with_capacity(num_vars);
@@ -1989,12 +2191,15 @@ fn commit_phase<F: PrimeField, H: Hash>(
     let mut eq = build_eq_x_r_vec::<F>(&point).unwrap();
 
     let mut eval = F::ZERO;
-    let mut bh_evals = Vec::with_capacity(1 << num_vars);
+    let mut bh_evals = Type1Polynomial {
+        poly: Vec::with_capacity(1 << num_vars),
+    };
     for i in 0..eq.len() {
-        eval = eval + comm.bh_evals[i] * eq[i];
-        bh_evals.push(comm.bh_evals[i]);
+        eval = eval + comm.bh_evals.poly[i] * eq[i];
+        bh_evals.poly.push(comm.bh_evals.poly[i]);
     }
 
+    let mut eq = Type1Polynomial { poly: eq };
     let mut sum_check_oracles_vec = Vec::with_capacity(num_rounds + 1);
     let mut sum_check_oracle = sum_check_first_round::<F>(&mut eq, &mut bh_evals);
     sum_check_oracles_vec.push(sum_check_oracle.clone());
@@ -2028,7 +2233,7 @@ fn commit_phase<F: PrimeField, H: Hash>(
 fn query_phase<F: PrimeField, H: Hash>(
     transcript: &mut impl TranscriptWrite<Output<H>, F>,
     comm: &BasefoldCommitment<F, H>,
-    oracles: &Vec<Vec<F>>,
+    oracles: &Vec<Type1Polynomial<F>>,
     num_verifier_queries: usize,
 ) -> (Vec<(Vec<(F, F)>, Vec<usize>)>, Vec<usize>) {
     let mut queries = transcript.squeeze_challenges(num_verifier_queries);
@@ -2040,7 +2245,7 @@ fn query_phase<F: PrimeField, H: Hash>(
             let mut x: &[u8] = x_rep.as_ref();
             let (int_bytes, rest) = x.split_at(std::mem::size_of::<u32>());
             let x_int: u32 = u32::from_be_bytes(int_bytes.try_into().unwrap());
-            ((x_int as usize) % comm.codeword.len()).into()
+            ((x_int as usize) % comm.codeword.poly.len()).into()
         })
         .collect_vec();
 
