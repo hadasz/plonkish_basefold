@@ -69,7 +69,7 @@ impl plonkish_backend::pcs::multilinear::BasefoldExtParams for BasefoldFri {
         return 401;
     }
     fn get_rs_basecode() -> bool{
-	true
+	false
     }    
 }
 

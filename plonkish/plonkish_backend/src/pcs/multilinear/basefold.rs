@@ -91,12 +91,22 @@ pub struct BasefoldVerifierParams<F: PrimeField> {
     rs_basecode: bool,
 }
 
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(bound(serialize = "F: Serialize", deserialize = "F: DeserializeOwned"))]
 pub struct BasefoldCommitment<F: PrimeField, H: Hash> {
     codeword: Type1Polynomial<F>,
     codeword_tree: Vec<Vec<Output<H>>>,
     bh_evals: Type1Polynomial<F>,
+}
+
+impl<F: PrimeField, H: Hash> Default for BasefoldCommitment<F, H> {
+    fn default() -> Self {
+        Self {
+            codeword: Type1Polynomial { poly: Vec::new() },
+            codeword_tree: vec![vec![Output::<H>::default()]],
+            bh_evals: Type1Polynomial { poly: Vec::new() },
+        }
+    }
 }
 
 impl<F: PrimeField, H: Hash> BasefoldCommitment<F, H> {
@@ -208,7 +218,10 @@ where
         let log_rate = V::get_rate();
         let mut test_rng = ChaCha8Rng::from_entropy();
         let (table_w_weights, table) = get_table_aes(poly_size, log_rate, &mut test_rng);
-
+        let mut rs_basecode = false;
+        if V::get_rs_basecode() == true && V::get_basecode_rounds() > 0 {
+            rs_basecode = true;
+        }
         Ok(BasefoldParams {
             log_rate: log_rate,
             num_verifier_queries: V::get_reps(),
@@ -217,7 +230,7 @@ where
             table_w_weights: table_w_weights,
             table: table,
             rng: test_rng.clone(),
-            rs_basecode: V::get_rs_basecode(),
+            rs_basecode: rs_basecode,
         })
     }
     fn trim(
@@ -265,9 +278,10 @@ where
                 1 << pp.log_rate,
                 1 << (pp.num_vars - pp.num_rounds),
             );
-            commitment = evaluate_over_foldable_domain_generic_basecode(
-                1 << (pp.num_vars - pp.num_rounds),
-                coeffs.poly.len(),
+            assert_eq!(basecode.poly.len() > 0, true);
+            println!("here");
+            commitment = evaluate_over_foldable_domain_2(
+                pp.num_vars - pp.num_rounds + pp.log_rate,
                 pp.log_rate,
                 basecode,
                 &pp.table,
@@ -686,11 +700,10 @@ where
             vp.rng.clone(),
             &eval,
         );
-
+        let mut next_oracle = Type1Polynomial { poly: final_oracle };
+        let mut bh_evals = Type1Polynomial { poly: bh_evals };
+        let mut eq = Type1Polynomial { poly: eq };
         if (!vp.rs_basecode) {
-            let mut next_oracle = Type1Polynomial { poly: final_oracle };
-            let mut bh_evals = Type1Polynomial { poly: bh_evals };
-            let mut eq = Type1Polynomial { poly: eq };
             virtual_open(
                 vp.num_vars,
                 vp.num_rounds,
@@ -703,7 +716,26 @@ where
                 &mut sum_check_oracles,
             );
         } else {
-            //TODO - verify RS Basecode
+            one_level_reverse_interp_hc(&mut bh_evals);
+            reverse_index_bits_in_place(&mut bh_evals.poly); //convert to type2
+            let (mut new_coeffs, _) =
+                interpolate_over_boolean_hypercube_with_copy(&Type2Polynomial {
+                    poly: bh_evals.poly,
+                });
+
+            let rs = encode_rs_basecode(
+                &new_coeffs,
+                1 << vp.log_rate,
+                1 << (vp.num_vars - vp.num_rounds),
+            );
+            println!("hereV");
+            reverse_index_bits_in_place(&mut next_oracle.poly); //convert to type2
+            assert_eq!(
+                rs,
+                Type2Polynomial {
+                    poly: next_oracle.poly
+                }
+            );
         }
         Ok(())
     }
@@ -881,10 +913,10 @@ where
                 count += 1;
             }
         }
+        let mut next_oracle = Type1Polynomial { poly: final_oracle };
+        let mut bh_evals = Type1Polynomial { poly: bh_evals };
+        let mut eq = Type1Polynomial { poly: eq };
         if (!vp.rs_basecode) {
-            let mut next_oracle = Type1Polynomial { poly: final_oracle };
-            let mut bh_evals = Type1Polynomial { poly: bh_evals };
-            let mut eq = Type1Polynomial { poly: eq };
             virtual_open(
                 vp.num_vars,
                 vp.num_rounds,
@@ -897,44 +929,30 @@ where
                 &mut sum_check_oracles,
             );
         } else {
-            //TODO - Verify RS Basecode
+            one_level_reverse_interp_hc(&mut bh_evals);
+            reverse_index_bits_in_place(&mut bh_evals.poly); //convert to type2
+            let (mut new_coeffs, _) =
+                interpolate_over_boolean_hypercube_with_copy(&Type2Polynomial {
+                    poly: bh_evals.poly,
+                });
+
+            let rs = encode_rs_basecode(
+                &new_coeffs,
+                1 << vp.log_rate,
+                1 << (vp.num_vars - vp.num_rounds),
+            );
+            reverse_index_bits_in_place(&mut next_oracle.poly); //convert to type2
+            assert_eq!(
+                rs,
+                Type2Polynomial {
+                    poly: next_oracle.poly
+                }
+            );
         }
         Ok(())
     }
 }
-/*
-#[test]
-fn test_evaluate_generic_basecode() {
-    use crate::pcs::multilinear::basefold::test::Five;
-    use blake2::Blake2s256;
-    use rand::rngs::OsRng;
 
-    type Pcs = Basefold<Mersenne61, Blake2s256, Five>;
-    let mut rng = OsRng;
-    let mut poly = MultilinearPolynomial::rand(10, OsRng);
-    let mut t_rng = ChaCha8Rng::from_entropy();
-    let (table_w_weights_, table) = get_table(poly.evals().len(), 3, &mut t_rng);
-
-    let rate = 8;
-    let mut base_codewords = encode_repetition_basecode(&Type2Polynomial{ poly: poly.evals().to_vec()} , rate);
-
-    let evals1 = evaluate_over_foldable_domain_generic_basecode::<Mersenne61>(
-        1,
-        poly.evals().len(),
-        3,
-        base_codewords,
-        &table,
-    );
-    let evals2 = evaluate_over_foldable_domain::<Mersenne61>(
-        3,
-        Type2Polynomial {
-            poly: poly.evals().to_vec(),
-        },
-        &table,
-    );
-    assert_eq!(evals1.poly, evals2.poly);
-}
-*/
 #[test]
 fn time_rs_code() {
     use blake2::Blake2s256;
@@ -969,35 +987,25 @@ fn encode_rs_basecode<F: PrimeField>(
                 .iter_mut()
                 .enumerate()
                 .for_each(|(i, target)| *target = horner(&chunk[..], &domain[i]));
-            Type2Polynomial{ poly: target }
+            target
         })
-        .collect::<Vec<Type2Polynomial<F>>>();
-    let logk = log2_strict(poly.poly.len());
-    let base_log_k = log2_strict(message_size);
-    let log_rate = log2_strict(rate);
-    let cl = 1 << (logk + log_rate);    
-    let mut coeffs_with_bc = vec![F::ZERO; cl];
-    
-    let bcl = 1 << (base_log_k + log_rate);
-    //rs code must be in type2 format
-    for i in 0..bcl {
-        let segs = res.len();
-        for j in 0..segs {
-            coeffs_with_bc[i * segs + j] = res[j].poly[i];
-        }
-    }    
+        .collect::<Vec<Vec<F>>>();
 
-    Type2Polynomial{ poly: coeffs_with_bc }
+    let result = res.iter().flatten().map(|x| *x).collect::<Vec<F>>();
+    Type2Polynomial { poly: result }
 }
 
-fn encode_repetition_basecode<F: PrimeField>(poly: &Type2Polynomial<F>, rate: usize) -> Vec<Type2Polynomial<F>> {
+fn encode_repetition_basecode<F: PrimeField>(
+    poly: &Type2Polynomial<F>,
+    rate: usize,
+) -> Vec<Type2Polynomial<F>> {
     let mut base_codewords = Vec::new();
     for c in &poly.poly {
         let mut rep_code = Vec::new();
         for i in 0..rate {
             rep_code.push(*c);
         }
-        base_codewords.push(Type2Polynomial { poly: rep_code});
+        base_codewords.push(Type2Polynomial { poly: rep_code });
     }
     return base_codewords;
 }
@@ -1015,9 +1023,6 @@ pub fn evaluate_over_foldable_domain_generic_basecode<F: PrimeField>(
 
     let rate = 1 << log_rate;
     let base_log_k = log2_strict(base_message_length);
-
-
-
 
     //iterate over array, replacing even indices with (evals[i] - evals[(i+1)])
     let mut chunk_size = 1 << base_log_k; //block length of the base code
@@ -1087,6 +1092,7 @@ pub fn evaluate_over_foldable_domain<F: PrimeField>(
 
 pub fn evaluate_over_foldable_domain_2<F: PrimeField>(
     log_chunk_size: usize,
+    log_rate: usize,
     mut coeffs: Type2Polynomial<F>,
     table: &Vec<Vec<F>>,
 ) -> Type1Polynomial<F> {
@@ -1110,9 +1116,7 @@ pub fn evaluate_over_foldable_domain_2<F: PrimeField>(
             });
     }
     reverse_index_bits_in_place(&mut coeffs.poly);
-    Type1Polynomial {
-        poly: coeffs.poly,
-    }
+    Type1Polynomial { poly: coeffs.poly }
 }
 
 fn interpolate_over_boolean_hypercube_with_copy<F: PrimeField>(
@@ -1273,6 +1277,15 @@ pub fn one_level_interp_hc<F: PrimeField>(mut evals: &mut Type1Polynomial<F>) {
     }
     evals.poly.par_chunks_mut(2).for_each(|chunk| {
         chunk[1] = chunk[1] - chunk[0];
+    });
+}
+
+pub fn one_level_reverse_interp_hc<F: PrimeField>(mut evals: &mut Type1Polynomial<F>) {
+    if (evals.poly.len() == 1) {
+        return;
+    }
+    evals.poly.par_chunks_mut(2).for_each(|chunk| {
+        chunk[1] = chunk[1] + chunk[0];
     });
 }
 
@@ -1767,11 +1780,11 @@ mod test {
         pcs::multilinear::{
             basefold::{
                 basefold_one_round_by_interpolation_weights, encode_repetition_basecode,
-                encode_rs_basecode, evaluate_over_foldable_domain,
+                encode_rs_basecode, evaluate_over_foldable_domain, evaluate_over_foldable_domain_2,
                 evaluate_over_foldable_domain_generic_basecode, get_table_aes,
                 interpolate_over_boolean_hypercube_with_copy, log2_strict,
                 multilinear_evaluation_atoz, multilinear_evaluation_ztoa, one_level_eval_hc,
-                one_level_interp_hc, rand_chacha, Basefold, Type1Polynomial, Type2Polynomial, evaluate_over_foldable_domain_2
+                one_level_interp_hc, rand_chacha, Basefold, Type1Polynomial, Type2Polynomial,
             },
             test::{run_batch_commit_open_verify, run_commit_open_verify},
         },
@@ -1815,7 +1828,7 @@ mod test {
             return 2;
         }
         fn get_rs_basecode() -> bool {
-            false
+            true
         }
     }
 
@@ -1872,24 +1885,30 @@ mod test {
         use rand::rngs::OsRng;
         let num_vars = 10;
         let log_rate = 1;
-	let num_rounds = 3;
+        let num_rounds = 1;
         let poly = MultilinearPolynomial::<F>::rand(num_vars, OsRng);
         let mut rng = ChaCha8Rng::from_entropy();
 
         let (mut table_w_weights, mut table) = get_table_aes((1 << num_vars), log_rate, &mut rng);
-        let (mut coeffs, mut bh_evals) =
+        let (mut coeffs_og, mut bh_evals) =
             interpolate_over_boolean_hypercube_with_copy(&Type2Polynomial {
                 poly: poly.evals().to_vec(),
             });
 
-	//coeffs is type2, bh_evals is type 1, basecode will have type2
-	let mut coeffs = encode_rs_basecode(&coeffs, 1 << log_rate, 1 << (num_vars - num_rounds));
+        //coeffs is type2, bh_evals is type 1, basecode will have type2
+        let mut coeffs =
+            encode_rs_basecode(&coeffs_og, 1 << log_rate, 1 << (num_vars - num_rounds));
 
-	let log_rate = num_vars - num_rounds;
-        let mut commitment = evaluate_over_foldable_domain_2(num_vars - num_rounds, coeffs.clone(), &table);
+        let log_chunk = num_vars - num_rounds;
+        let mut commitment = evaluate_over_foldable_domain_2(
+            num_vars - num_rounds + log_rate,
+            log_rate,
+            coeffs.clone(),
+            &table,
+        );
 
         let challenge = rand_chacha::<F>(&mut rng);
-        let fold = basefold_one_round_by_interpolation_weights(
+        let mut fold = basefold_one_round_by_interpolation_weights(
             &table_w_weights,
             0,
             &commitment,
@@ -1897,14 +1916,23 @@ mod test {
         );
 
         let chal_vec = vec![challenge];
-        let partial_eval = multilinear_evaluation_ztoa(&mut coeffs, &chal_vec);
-	//Compare a partial eval of RS Evaluations to an RS Evaluation of a partial Eval
 
-        let mut commitment = evaluate_over_foldable_domain_2(num_vars - num_rounds, coeffs.clone(), &table);
+        one_level_interp_hc(&mut bh_evals);
+        one_level_eval_hc(&mut bh_evals, challenge);
 
-        assert_eq!(commitment, fold);
-	
+        reverse_index_bits_in_place(&mut bh_evals.poly); //convert to type2
 
+        let (mut new_coeffs, _) = interpolate_over_boolean_hypercube_with_copy(&Type2Polynomial {
+            poly: bh_evals.poly,
+        });
+
+        let rs = encode_rs_basecode(&new_coeffs, 1 << log_rate, 1 << (num_vars - num_rounds));
+
+        //Compare a partial eval of RS Evaluations to an RS Evaluation of a partial Eval
+
+        //        let mut commitment = evaluate_over_foldable_domain_2(num_vars - num_rounds + log_rate, log_rate, rs.clone(), &table);
+        reverse_index_bits_in_place(&mut fold.poly);
+        assert_eq!(rs, Type2Polynomial { poly: fold.poly });
     }
 
     #[test]
