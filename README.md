@@ -8,3 +8,4 @@ To test, go to `plonkish/plonkish_backend/src/pcs/multilinear` and run `rustup r
 
 To benchmark, go to `plonkish/benchmark` and run `rustup run nightly cargo bench`. You can change which benchmarks are run in `plonkish/benchmark/Cargo.toml`
 
+The util folder (`plonky2_util`) and much inspriation was taken from `plonky2` (https://github.com/0xPolygonZero/plonky2)
