@@ -2,7 +2,7 @@
 
 **This is a fork of https://github.com/han0110/plonkish**, that includes an implementation of BasefoldPCS and an implementation of the Zeromorph compilation of FRI (for benchmarking purposes)
 
-Basefold is located in plonkish_backend/src/pcs/multilinear/basefold.rs
+**The code for Basefold is located in `plonkish_backend/src/pcs/multilinear/basefold.rs`**
 
 To test, go to `plonkish/plonkish_backend/src/pcs/multilinear` and run `rustup run nightly cargo test basefold::test::commit` or `rustup run nightly cargo test basefold::test::batch_commit`
 
