@@ -291,7 +291,7 @@ where
                 1 << (pp.num_vars - pp.num_rounds),
             );
             assert_eq!(basecode.poly.len() > 0, true);
-            println!("here");
+
             commitment = evaluate_over_foldable_domain_2(
                 pp.num_vars - pp.num_rounds + pp.log_rate,
                 pp.log_rate,
@@ -740,7 +740,7 @@ where
                 1 << vp.log_rate,
                 1 << (vp.num_vars - vp.num_rounds),
             );
-            println!("hereV");
+
             reverse_index_bits_in_place(&mut next_oracle.poly); //convert to type2
             assert_eq!(
                 rs,
