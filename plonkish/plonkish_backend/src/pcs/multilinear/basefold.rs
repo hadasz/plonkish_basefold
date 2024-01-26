@@ -42,15 +42,27 @@ use rayon::prelude::{
 };
 use std::{borrow::Cow, marker::PhantomData, mem::size_of, slice};
 
-//coeffs/evals in canonical form, [D,C,B,A] -> D + Cx + By + Axy for coeffs
-//[1,x,y,xy] for evals
+
+//The most fundamental building block of basefold is the polynomial. Currently, polynomial's are just expressed as vectors of field elements. Sometimes, vectors are in coefficient form and sometimes they are in evaluation form. Additionally, many functions make assumptions on the order of evaluations of a polynomial. There are two orderings that are used. The first ordering (which we label Type1Polynomial) places "folding pairs" next to each other, for increased parallelizability. eg, the evaluations are as follows:
+
+//Type1Polynomial: vec![P(x1,y1,z1), P(x1,y1,z2), P(x1,y2,z3), P(x1,y2,z4), P(x2,y3,z5), P(x2,y3,z6), P(x2,y4,z7), P(x2,y4,z8)]
+
+//Type2Polynomial has it in the ordering that is described in the Basefold paper, which also lends itself well to fast encoding
+//Type2Polynomial:  vec![P(x1,y1,z1), P(x2,y3,z5), P(x1,y2,z3), P(x2,y4,z7), P(x1,y1,z2), P(x2,y3,z6), P(x1,y2,z4), P(x2,y4,z8)]
+
+//Type1Polynomial is a bit-reversal of Type2Polynomial, where the transformation can be done by the function `reverse_index_bits_in_place`, which was taken from `plonky2`.
+
+//Finally, sometimes Type2Polynomial contains coefficients rather than evaluations, in that case it just means that when encoded, it yields evaluations in Type2 order. 
+
+
+
+
 #[derive(Clone, Debug, Default, Serialize, Deserialize, Eq, PartialEq)]
 struct Type1Polynomial<F: PrimeField> {
     pub poly: Vec<F>,
 }
 
-//coeffs/evals in non-canonical from, [D,B,C,A] -> D + Cx + By + Axy
-//[1,y,x,xy] for evals
+
 #[derive(Clone, Debug, Default, Serialize, Deserialize, Eq, PartialEq)]
 struct Type2Polynomial<F: PrimeField> {
     pub poly: Vec<F>,
@@ -2216,8 +2228,8 @@ fn commit_phase<F: PrimeField, H: Hash>(
     let mut new_oracle = &comm.codeword;
 
     let num_rounds = num_rounds;
-    let mut eq = build_eq_x_r_vec::<F>(&point).unwrap();
 
+    let mut eq = build_eq_x_r_vec::<F>(&point).unwrap();
     let mut eval = F::ZERO;
     let mut bh_evals = Type1Polynomial {
         poly: Vec::with_capacity(1 << num_vars),
@@ -2239,6 +2251,7 @@ fn commit_phase<F: PrimeField, H: Hash>(
         let challenge: F = transcript.squeeze_challenge();
 
         sum_check_oracle = sum_check_challenge_round(&mut eq, &mut bh_evals, challenge);
+
         sum_check_oracles_vec.push(sum_check_oracle.clone());
 
         oracles.push(basefold_one_round_by_interpolation_weights::<F>(
