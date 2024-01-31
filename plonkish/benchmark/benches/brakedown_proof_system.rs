@@ -15,18 +15,21 @@ use halo2_proofs::{
 };
 use itertools::Itertools;
 use plonkish_backend::{
-    backend::{self, PlonkishBackend, PlonkishCircuit},
+    backend::{self, hyperplonk::preprocessor::batch_size, PlonkishBackend, PlonkishCircuit},
     frontend::halo2::{circuit::VanillaPlonk, CircuitExt, Halo2Circuit},
-    halo2_curves::{bn256::{Bn256, Fr}, secp256k1::Fp},
-    pcs::multilinear,
+    halo2_curves::{
+        bn256::{Bn256, Fr},
+        secp256k1::Fp,
+    },
+    pcs::{multilinear, PolynomialCommitmentScheme as PCS},
     util::{
-        end_timer, start_timer,
+        code::{BrakedownSpec1, BrakedownSpec3, BrakedownSpec6, LinearCodes},
+        end_timer,
+        goldilocksMont::GoldilocksMont,
+        hash::Blake2s256,
+        start_timer,
         test::std_rng,
-        transcript::{InMemoryTranscript, Blake2sTranscript},
-	hash::Blake2s256,
-	code::{BrakedownSpec1,BrakedownSpec3, BrakedownSpec6},
-	goldilocksMont::GoldilocksMont	
-	
+        transcript::{Blake2sTranscript, InMemoryTranscript},
     },
 };
 
@@ -49,8 +52,10 @@ fn main() {
     k_range.for_each(|k| systems.iter().for_each(|system| system.bench(k, circuit)));
 }
 
-fn bench_hyperplonk<C: CircuitExt<Fr>>(k: usize) {
-    type Brakedown = multilinear::MultilinearBrakedown<Fr, Blake2s256, BrakedownSpec6>;	    
+fn bench_hyperplonk_256<C: CircuitExt<Fr>>(k: usize) {
+    type Brakedown = multilinear::MultilinearBrakedown<Fr, Blake2s256, BrakedownSpec6>;
+
+
     type HyperPlonk = backend::hyperplonk::HyperPlonk<Brakedown>;
 
     let circuit = C::rand(k, std_rng());
@@ -60,14 +65,12 @@ fn bench_hyperplonk<C: CircuitExt<Fr>>(k: usize) {
 
     let timer = start_timer(|| format!("hyperplonk_setup-{k}"));
     let param = HyperPlonk::setup(&circuit_info, std_rng()).unwrap();
+    let row_len = param.brakedown().row_len();    
     end_timer(timer);
-
-
 
     let timer = start_timer(|| format!("hyperplonk_preprocess-{k}"));
     let (pp, vp) = HyperPlonk::preprocess(&param, &circuit_info).unwrap();
     end_timer(timer);
-
 
     let proof = sample(System::HyperPlonk, k, || {
         let _timer = start_timer(|| format!("hyperplonk_prove-{k}"));
@@ -75,19 +78,24 @@ fn bench_hyperplonk<C: CircuitExt<Fr>>(k: usize) {
         HyperPlonk::prove(&pp, &circuit, &mut transcript, std_rng()).unwrap();
         let proof = transcript.into_proof();
 
-	proof
+        proof
     });
 
-    let size = proof.len() * 8;
+    let size = proof.len() * 8 - size_of_extra_rows(256, row_len, batch_size(&circuit_info));
     writeln!(&mut (System::HyperPlonk).size_output(), "{}", size).unwrap();
-    
+
     let _timer = start_timer(|| format!("hyperplonk_verify-{k}"));
-    let accept = verifier_sample(System::HyperPlonk, k , || {
+    let accept = verifier_sample(System::HyperPlonk, k, || {
         let mut transcript = Blake2sTranscript::from_proof((), proof.as_slice());
         HyperPlonk::verify(&vp, instances, &mut transcript, std_rng()).is_ok()
     });
     assert!(accept);
 }
+
+fn size_of_extra_rows(field_size: usize, row_len: usize, batch_size: usize) -> usize {
+    (batch_size - 1) * row_len * field_size
+}
+
 
 fn bench_halo2<C: CircuitExt<Fr>>(k: usize) {
     let circuit = C::rand(k, std_rng());
@@ -127,18 +135,14 @@ fn bench_halo2<C: CircuitExt<Fr>>(k: usize) {
     assert!(accept);
 }
 
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 enum System {
-    HyperPlonk
-
+    HyperPlonk,
 }
 
 impl System {
     fn all() -> Vec<System> {
-        vec![
-            System::HyperPlonk,
-        ]
+        vec![System::HyperPlonk]
     }
 
     fn output_path(&self) -> String {
@@ -171,7 +175,7 @@ impl System {
             .append(true)
             .open(self.size_output_path())
             .unwrap()
-    }    
+    }
 
     fn support(&self, circuit: Circuit) -> bool {
         match self {
@@ -191,12 +195,10 @@ impl System {
 
         match self {
             System::HyperPlonk => match circuit {
-                Circuit::VanillaPlonk => bench_hyperplonk::<VanillaPlonk<Fr>>(k),
-                Circuit::Aggregation => {}//bench_hyperplonk::<AggregationCircuit<Bn256>>(k),
-                Circuit::Sha256 => {}//bench_hyperplonk::<Sha256Circuit>(k),
+                Circuit::VanillaPlonk => bench_hyperplonk_256::<VanillaPlonk<Fr>>(k),
+                Circuit::Aggregation => {}, //bench_hyperplonk::<AggregationCircuit<Bn256>>(k),
+                Circuit::Sha256 => {}      //bench_hyperplonk::<Sha256Circuit>(k),
             },
-
-
         }
     }
 }
@@ -205,7 +207,6 @@ impl Display for System {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             System::HyperPlonk => write!(f, "hyperplonk"),
-
         }
     }
 }
@@ -286,7 +287,7 @@ fn create_output(systems: &[System]) {
     for system in systems {
         File::create(system.output_path()).unwrap();
         File::create(system.verifier_output_path()).unwrap();
-        File::create(system.size_output_path()).unwrap();			
+        File::create(system.size_output_path()).unwrap();
     }
 }
 
