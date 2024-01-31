@@ -36,7 +36,7 @@ timer = ["plonkish_backend/timer", "halo2_proofs/print-trace", "espresso_subrout
 
 
 [[bench]]
-name = "basefold_proof_system"
+name = "brakedown_proof_system"
 harness = false
 
 

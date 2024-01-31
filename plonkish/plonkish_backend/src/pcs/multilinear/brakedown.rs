@@ -302,9 +302,9 @@ where
         evals: &[Evaluation<F>],
         transcript: &mut impl TranscriptWrite<Self::CommitmentChunk, F>,
     ) -> Result<(), Error> {
-	use std::env;
-	let key = "RAYON_NUM_THREADS";
-	env::set_var(key, "8");    
+//	use std::env;
+//	let key = "RAYON_NUM_THREADS";
+//	env::set_var(key, "8");    
         let polys = polys.into_iter().collect_vec();
         let comms = comms.into_iter().collect_vec();
         for eval in evals {

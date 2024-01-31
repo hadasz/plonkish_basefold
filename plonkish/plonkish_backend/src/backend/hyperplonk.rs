@@ -27,7 +27,7 @@ use std::time::Instant;
 use rand::RngCore;
 use std::{fmt::Debug, hash::Hash, iter, marker::PhantomData};
 
-pub(crate) mod preprocessor;
+pub mod preprocessor;
 pub(crate) mod prover;
 pub(crate) mod verifier;
 

@@ -10,7 +10,7 @@ use crate::{
 };
 use std::{array, borrow::Cow, iter, mem};
 
-pub(super) fn batch_size<F: PrimeField>(circuit_info: &PlonkishCircuitInfo<F>) -> usize {
+pub fn batch_size<F: PrimeField>(circuit_info: &PlonkishCircuitInfo<F>) -> usize {
     let num_lookups = circuit_info.lookups.len();
     let num_permutation_polys = circuit_info.permutation_polys().len();
     chain![
