@@ -52,7 +52,86 @@ fn main() {
     k_range.for_each(|k| systems.iter().for_each(|system| system.bench(k, circuit)));
 }
 
-fn bench_hyperplonk_256<C: CircuitExt<Fr>>(k: usize) {
+fn bench_hyperplonk_spec1<C: CircuitExt<Fr>>(k: usize) {
+    type Brakedown = multilinear::MultilinearBrakedown<Fr, Blake2s256, BrakedownSpec1>;
+
+
+    type HyperPlonk = backend::hyperplonk::HyperPlonk<Brakedown>;
+
+    let circuit = C::rand(k, std_rng());
+    let circuit = Halo2Circuit::new::<HyperPlonk>(k, circuit);
+    let circuit_info = circuit.circuit_info().unwrap();
+    let instances = circuit.instances();
+
+    let timer = start_timer(|| format!("hyperplonk_setup-{k}"));
+    let param = HyperPlonk::setup(&circuit_info, std_rng()).unwrap();
+    let row_len = param.brakedown().row_len();    
+    end_timer(timer);
+
+    let timer = start_timer(|| format!("hyperplonk_preprocess-{k}"));
+    let (pp, vp) = HyperPlonk::preprocess(&param, &circuit_info).unwrap();
+    end_timer(timer);
+
+    let proof = sample(System::Spec1, k, || {
+        let _timer = start_timer(|| format!("hyperplonk_prove-{k}"));
+        let mut transcript = Blake2sTranscript::default();
+        HyperPlonk::prove(&pp, &circuit, &mut transcript, std_rng()).unwrap();
+        let proof = transcript.into_proof();
+
+        proof
+    });
+
+    let size = proof.len() * 8 - size_of_extra_rows(256, row_len, batch_size(&circuit_info));
+    writeln!(&mut (System::Spec3).size_output(), "{}", size).unwrap();
+
+    let _timer = start_timer(|| format!("hyperplonk_verify-{k}"));
+    let accept = verifier_sample(System::Spec6, k, || {
+        let mut transcript = Blake2sTranscript::from_proof((), proof.as_slice());
+        HyperPlonk::verify(&vp, instances, &mut transcript, std_rng()).is_ok()
+    });
+    assert!(accept);
+}
+
+fn bench_hyperplonk_spec3<C: CircuitExt<Fr>>(k: usize) {
+    type Brakedown = multilinear::MultilinearBrakedown<Fr, Blake2s256, BrakedownSpec3>;
+
+
+    type HyperPlonk = backend::hyperplonk::HyperPlonk<Brakedown>;
+
+    let circuit = C::rand(k, std_rng());
+    let circuit = Halo2Circuit::new::<HyperPlonk>(k, circuit);
+    let circuit_info = circuit.circuit_info().unwrap();
+    let instances = circuit.instances();
+
+    let timer = start_timer(|| format!("hyperplonk_setup-{k}"));
+    let param = HyperPlonk::setup(&circuit_info, std_rng()).unwrap();
+    let row_len = param.brakedown().row_len();    
+    end_timer(timer);
+
+    let timer = start_timer(|| format!("hyperplonk_preprocess-{k}"));
+    let (pp, vp) = HyperPlonk::preprocess(&param, &circuit_info).unwrap();
+    end_timer(timer);
+
+    let proof = sample(System::Spec3, k, || {
+        let _timer = start_timer(|| format!("hyperplonk_prove-{k}"));
+        let mut transcript = Blake2sTranscript::default();
+        HyperPlonk::prove(&pp, &circuit, &mut transcript, std_rng()).unwrap();
+        let proof = transcript.into_proof();
+
+        proof
+    });
+
+    let size = proof.len() * 8 - size_of_extra_rows(256, row_len, batch_size(&circuit_info));
+    writeln!(&mut (System::Spec3).size_output(), "{}", size).unwrap();
+
+    let _timer = start_timer(|| format!("hyperplonk_verify-{k}"));
+    let accept = verifier_sample(System::Spec3, k, || {
+        let mut transcript = Blake2sTranscript::from_proof((), proof.as_slice());
+        HyperPlonk::verify(&vp, instances, &mut transcript, std_rng()).is_ok()
+    });
+    assert!(accept);
+}
+fn bench_hyperplonk_spec6<C: CircuitExt<Fr>>(k: usize) {
     type Brakedown = multilinear::MultilinearBrakedown<Fr, Blake2s256, BrakedownSpec6>;
 
 
@@ -72,7 +151,7 @@ fn bench_hyperplonk_256<C: CircuitExt<Fr>>(k: usize) {
     let (pp, vp) = HyperPlonk::preprocess(&param, &circuit_info).unwrap();
     end_timer(timer);
 
-    let proof = sample(System::HyperPlonk, k, || {
+    let proof = sample(System::Spec6, k, || {
         let _timer = start_timer(|| format!("hyperplonk_prove-{k}"));
         let mut transcript = Blake2sTranscript::default();
         HyperPlonk::prove(&pp, &circuit, &mut transcript, std_rng()).unwrap();
@@ -82,10 +161,10 @@ fn bench_hyperplonk_256<C: CircuitExt<Fr>>(k: usize) {
     });
 
     let size = proof.len() * 8 - size_of_extra_rows(256, row_len, batch_size(&circuit_info));
-    writeln!(&mut (System::HyperPlonk).size_output(), "{}", size).unwrap();
+    writeln!(&mut (System::Spec6).size_output(), "{}", size).unwrap();
 
     let _timer = start_timer(|| format!("hyperplonk_verify-{k}"));
-    let accept = verifier_sample(System::HyperPlonk, k, || {
+    let accept = verifier_sample(System::Spec6, k, || {
         let mut transcript = Blake2sTranscript::from_proof((), proof.as_slice());
         HyperPlonk::verify(&vp, instances, &mut transcript, std_rng()).is_ok()
     });
@@ -120,7 +199,7 @@ fn bench_halo2<C: CircuitExt<Fr>>(k: usize) {
     let verify_proof =
         |c, d, e| verify_proof::<_, VerifierGWC<_>, _, _, _, false>(&param, pk.get_vk(), c, d, e);
 
-    let proof = sample(System::HyperPlonk, k, || {
+    let proof = sample(System::Spec1, k, || {
         let _timer = start_timer(|| format!("halo2_prove-{k}"));
         let transcript = Blake2bWrite::init(Vec::new());
         create_proof(circuits, &instances, std_rng(), transcript)
@@ -137,12 +216,14 @@ fn bench_halo2<C: CircuitExt<Fr>>(k: usize) {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 enum System {
-    HyperPlonk,
+    Spec1,
+    Spec3,
+    Spec6
 }
 
 impl System {
     fn all() -> Vec<System> {
-        vec![System::HyperPlonk]
+        vec![System::Spec1,System::Spec3,System::Spec6]
     }
 
     fn output_path(&self) -> String {
@@ -150,11 +231,11 @@ impl System {
     }
 
     fn verifier_output_path(&self) -> String {
-        format!("{OUTPUT_DIR}/verifier-hyperplonk-brakedown")
+        format!("{OUTPUT_DIR}/{self}-verifier-brakedown")
     }
 
     fn size_output_path(&self) -> String {
-        format!("{OUTPUT_DIR}/size-hyperplonk-brakedown")
+        format!("{OUTPUT_DIR}/{self}-size-brakedown")
     }
 
     fn output(&self) -> File {
@@ -178,12 +259,11 @@ impl System {
     }
 
     fn support(&self, circuit: Circuit) -> bool {
-        match self {
-            System::HyperPlonk => match circuit {
+	match circuit {
                 Circuit::VanillaPlonk | Circuit::Aggregation | Circuit::Sha256 => true,
-            },
         }
     }
+
 
     fn bench(&self, k: usize, circuit: Circuit) {
         if !self.support(circuit) {
@@ -194,19 +274,20 @@ impl System {
         println!("start benchmark on 2^{k} {circuit} with {self}");
 
         match self {
-            System::HyperPlonk => match circuit {
-                Circuit::VanillaPlonk => bench_hyperplonk_256::<VanillaPlonk<Fr>>(k),
-                Circuit::Aggregation => {}, //bench_hyperplonk::<AggregationCircuit<Bn256>>(k),
-                Circuit::Sha256 => {}      //bench_hyperplonk::<Sha256Circuit>(k),
-            },
+            System::Spec1 => bench_hyperplonk_spec1::<VanillaPlonk<Fr>>(k),
+            System::Spec3 => bench_hyperplonk_spec3::<VanillaPlonk<Fr>>(k),
+            System::Spec6 => bench_hyperplonk_spec6::<VanillaPlonk<Fr>>(k)	    		
         }
     }
 }
 
+
 impl Display for System {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            System::HyperPlonk => write!(f, "hyperplonk"),
+            System::Spec1 => write!(f, "spec1"),
+            System::Spec3 => write!(f, "spec3"),
+            System::Spec6 => write!(f, "spec6"),	    	    
         }
     }
 }
@@ -245,7 +326,6 @@ fn parse_args() -> (Vec<System>, Circuit, Range<usize>) {
             match key.as_str() {
                 "--system" => match value.as_str() {
                     "all" => systems = System::all(),
-                    "hyperplonk" => systems.push(System::HyperPlonk),
                     _ => panic!(
                         "system should be one of {{all,hyperplonk,halo2,espresso_hyperplonk}}"
                     ),
