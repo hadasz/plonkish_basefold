@@ -82,10 +82,10 @@ fn bench_hyperplonk_spec1<C: CircuitExt<Fr>>(k: usize) {
     });
 
     let size = proof.len() * 8 - size_of_extra_rows(256, row_len, batch_size(&circuit_info));
-    writeln!(&mut (System::Spec3).size_output(), "{}", size).unwrap();
+    writeln!(&mut (System::Spec1).size_output(), "{}", size).unwrap();
 
     let _timer = start_timer(|| format!("hyperplonk_verify-{k}"));
-    let accept = verifier_sample(System::Spec6, k, || {
+    let accept = verifier_sample(System::Spec1, k, || {
         let mut transcript = Blake2sTranscript::from_proof((), proof.as_slice());
         HyperPlonk::verify(&vp, instances, &mut transcript, std_rng()).is_ok()
     });
@@ -227,7 +227,7 @@ impl System {
     }
 
     fn output_path(&self) -> String {
-        format!("{OUTPUT_DIR}/hyperplonk-brakedown")
+        format!("{OUTPUT_DIR}/{self}-prover-brakedown")
     }
 
     fn verifier_output_path(&self) -> String {
