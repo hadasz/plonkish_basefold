@@ -376,11 +376,13 @@ mod test {
 		let now = Instant::now();
 		
                 let comm = Pcs::commit_and_write(&pp, &poly, &mut transcript).unwrap();
+		println!("comm time {:?}", now.elapsed());
                 let point = transcript.squeeze_challenges(num_vars);
                 let eval = poly.evaluate(point.as_slice());
                 transcript.write_field_element(&eval).unwrap();
+		let now2 = Instant::now();
                 Pcs::open(&pp, &poly, &comm, &point, &eval, &mut transcript).unwrap();
-		println!("proof time {:?}", now.elapsed());
+		println!("proximity time {:?}", now2.elapsed());
 
                 transcript.into_proof()
             };

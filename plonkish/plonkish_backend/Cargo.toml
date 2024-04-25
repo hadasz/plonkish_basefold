@@ -6,7 +6,7 @@ edition = "2021"
 [dependencies]
 aes = "0.8"
 hex-literal = "0.3.3"
-ctr = {git = "https://github.com/RustCrypto/block-modes"}
+ctr = {git = "https://github.com/RustCrypto/block-modes", rev="78fefba5a80f3d788fd8ba7c4483625148f5dc18"}
 halo2_curves = { git = "https://github.com/privacy-scaling-explorations/halo2curves", tag = "0.3.3", package = "halo2curves", features = ["derive_serde"] }
 ff = {version = "0.13.0", features = ["derive"]}
 pasta_curves = { version = "0.5.0", features = ["serde"] }

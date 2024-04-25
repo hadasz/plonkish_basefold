@@ -42,7 +42,6 @@ use rayon::prelude::{
 };
 use std::{borrow::Cow, marker::PhantomData, mem::size_of, slice};
 
-
 //The most fundamental building block of basefold is the polynomial. Currently, polynomial's are just expressed as vectors of field elements. Sometimes, vectors are in coefficient form and sometimes they are in evaluation form. Additionally, many functions make assumptions on the order of evaluations of a polynomial. There are two orderings that are used. The first ordering (which we label Type1Polynomial) places "folding pairs" next to each other, for increased parallelizability. eg, the evaluations are as follows:
 
 //Type1Polynomial: vec![P(x1,y1,z1), P(x1,y1,z2), P(x1,y2,z3), P(x1,y2,z4), P(x2,y3,z5), P(x2,y3,z6), P(x2,y4,z7), P(x2,y4,z8)]
@@ -52,16 +51,12 @@ use std::{borrow::Cow, marker::PhantomData, mem::size_of, slice};
 
 //Type1Polynomial is a bit-reversal of Type2Polynomial, where the transformation can be done by the function `reverse_index_bits_in_place`, which was taken from `plonky2`.
 
-//Finally, sometimes Type2Polynomial contains coefficients rather than evaluations, in that case it just means that when encoded, it yields evaluations in Type2 order. 
-
-
-
+//Finally, sometimes Type2Polynomial contains coefficients rather than evaluations, in that case it just means that when encoded, it yields evaluations in Type2 order.
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize, Eq, PartialEq)]
 struct Type1Polynomial<F: PrimeField> {
     pub poly: Vec<F>,
 }
-
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize, Eq, PartialEq)]
 struct Type2Polynomial<F: PrimeField> {
@@ -1313,17 +1308,17 @@ pub fn one_level_eval_hc<F: PrimeField>(mut evals: &mut Type1Polynomial<F>, chal
     });
 }
 
-pub fn p_i<F: PrimeField>(evals: &Vec<F>, eq: &Vec<F>) -> Vec<F> {
-    if (evals.len() == 1) {
-        return vec![evals[0], evals[0], evals[0]];
+pub fn p_i<F: PrimeField>(evals: &Type1Polynomial<F>, eq: &Type1Polynomial<F>) -> Vec<F> {
+    if (evals.poly.len() == 1) {
+        return vec![evals.poly[0], evals.poly[0], evals.poly[0]];
     }
     //evals coeffs
     let mut coeffs = vec![F::ZERO, F::ZERO, F::ZERO];
     let mut i = 0;
-    while (i < evals.len()) {
-        coeffs[0] += evals[i] * eq[i];
-        coeffs[1] += evals[i + 1] * eq[i] + evals[i] * eq[i + 1];
-        coeffs[2] += evals[i + 1] * eq[i + 1];
+    while (i < evals.poly.len()) {
+        coeffs[0] += evals.poly[i] * eq.poly[i];
+        coeffs[1] += evals.poly[i + 1] * eq.poly[i] + evals.poly[i] * eq.poly[i + 1];
+        coeffs[2] += evals.poly[i + 1] * eq.poly[i + 1];
         i += 2;
     }
 
@@ -1387,23 +1382,71 @@ fn nd_array_pi<F: PrimeField>(evals: &Vec<F>, eq: &Vec<F>) -> Vec<F> {
 */
 #[test]
 fn test_sumcheck() {
-    use crate::util::ff_255::ff255::Ft255;
     let i = 25;
     let mut rng = ChaCha8Rng::from_entropy();
     let evals = Type1Polynomial {
-        poly: rand_vec::<Ft255>(1 << i, &mut rng),
+        poly: rand_vec::<Mersenne61>(1 << i, &mut rng),
     };
     let eq = Type1Polynomial {
-        poly: rand_vec::<Ft255>(1 << i, &mut rng),
+        poly: rand_vec::<Mersenne61>(1 << i, &mut rng),
     };
     let now = Instant::now();
-    let coeffs1 = p_i(&evals.poly, &eq.poly);
+    let coeffs1 = p_i(&evals, &eq);
     //    println!("original {:?}", now.elapsed());
 
     let now = Instant::now();
     let coeffs2 = parallel_pi(&evals, &eq);
     //    println!("new {:?}", now.elapsed());
     assert_eq!(coeffs1, coeffs2);
+}
+
+fn sum_check<F: PrimeField>(
+    poly: Type1Polynomial<F>,
+    point: Vec<F>,
+    num_vars: usize,
+    num_rounds: usize,
+    eq: Vec<F>,
+) -> Vec<Vec<F>> {
+    let mut eval = F::ZERO;
+    let mut bh_evals = Type1Polynomial {
+        poly: Vec::with_capacity(1 << num_vars),
+    };
+    for i in 0..eq.len() {
+        eval = eval + poly.poly[i] * eq[i];
+        bh_evals.poly.push(poly.poly[i]);
+    }
+
+    let mut eq = Type1Polynomial { poly: eq };
+    let mut sum_check_oracles_vec = Vec::with_capacity(num_rounds + 1);
+
+    let mut sum_check_oracle = sum_check_first_round::<F>(&mut eq, &mut bh_evals);
+    sum_check_oracles_vec.push(sum_check_oracle.clone());
+    for i in 0..(num_rounds) {
+        let mut rng = ChaCha8Rng::from_entropy();
+        let challenge: F = rand_chacha(&mut rng);
+
+        sum_check_oracle = sum_check_challenge_round(&mut eq, &mut bh_evals, challenge);
+
+        sum_check_oracles_vec.push(sum_check_oracle.clone());
+    }
+    sum_check_oracles_vec
+}
+#[test]
+fn time_sumcheck() {
+    let i = 23;
+    let mut rng = ChaCha8Rng::from_entropy();
+    let evals = Type1Polynomial {
+        poly: rand_vec::<Mersenne127>((1 << i), &mut rng),
+    };
+    let point = rand_vec::<Mersenne127>(i, &mut rng);
+    let mut eq = build_eq_x_r_vec::<Mersenne127>(&point).unwrap();
+    let now = Instant::now();
+    (0..60).into_par_iter().for_each(|x| {
+
+
+        let oracles = sum_check(evals.clone(), point.clone(), i, i, eq.clone());
+    });
+    println!("now.elased() {:?}", now.elapsed());
 }
 
 fn sum_check_challenge_round<F: PrimeField>(
@@ -1417,8 +1460,8 @@ fn sum_check_challenge_round<F: PrimeField>(
     one_level_interp_hc(&mut eq);
     one_level_interp_hc(&mut bh_values);
 
-    parallel_pi(&bh_values, &eq)
-    // p_i(&bh_values,&eq)
+    //    parallel_pi(&bh_values, &eq)
+    p_i(&bh_values, &eq)
 }
 
 fn basefold_one_round_by_interpolation_weights<F: PrimeField>(
@@ -1829,18 +1872,18 @@ mod test {
 
     impl BasefoldExtParams for Five {
         fn get_reps() -> usize {
-            return 260;
+            return 33;
         }
 
         fn get_rate() -> usize {
-            return 1;
+            return 3;
         }
 
         fn get_basecode_rounds() -> usize {
-            return 2;
+            return 0;
         }
         fn get_rs_basecode() -> bool {
-            true
+            false
         }
     }
 
