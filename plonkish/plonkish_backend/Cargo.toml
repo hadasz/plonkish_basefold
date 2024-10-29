@@ -5,21 +5,21 @@ edition = "2021"
 
 [dependencies]
 aes = "0.8"
-hex-literal = "0.3.3"
+hex-literal = "0.4.1"
 ctr = {git = "https://github.com/RustCrypto/block-modes", rev="78fefba5a80f3d788fd8ba7c4483625148f5dc18"}
-halo2_curves = { git = "https://github.com/privacy-scaling-explorations/halo2curves", tag = "0.3.3", package = "halo2curves", features = ["derive_serde"] }
+halo2_curves = { git = "https://github.com/privacy-scaling-explorations/halo2curves", tag = "v0.4.0", package = "halo2curves", features = ["derive_serde"] }
 ff = {version = "0.13.0", features = ["derive"]}
-pasta_curves = { version = "0.5.0", features = ["serde"] }
+pasta_curves = { version = "0.5.1", features = ["serde"] }
 generic-array = { version = "0.14.7", features = ["serde"] }
 bitvec = "1.0.1"
-itertools = "0.10.5"
-num-bigint = "0.4.3"
-num-integer = "0.1.45"
-rand = "0.8"
-serde = { version = "1.0", features = ["derive"] }
+itertools = "0.13.0"
+num-bigint = "0.4.6"
+num-integer = "0.1.46"
+rand = "0.8.5"
+serde = { version = "1.0.214", features = ["derive"] }
 threadpool = "1.8.1"
 bincode = "1.3.3"
-sha3 = "0.10.6"
+sha3 = "0.10.8"
 blake2b_simd = "1.0.2"
 blake2={version = "0.10.6"}
 poseidon = { git = "https://github.com/han0110/poseidon", branch = "feature/with-spec" }
