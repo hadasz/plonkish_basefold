@@ -54,12 +54,12 @@ use std::{borrow::Cow, marker::PhantomData, mem::size_of, slice};
 //Finally, sometimes Type2Polynomial contains coefficients rather than evaluations, in that case it just means that when encoded, it yields evaluations in Type2 order.
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize, Eq, PartialEq)]
-struct Type1Polynomial<F: PrimeField> {
+pub struct Type1Polynomial<F: PrimeField> {
     pub poly: Vec<F>,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize, Eq, PartialEq)]
-struct Type2Polynomial<F: PrimeField> {
+pub struct Type2Polynomial<F: PrimeField> {
     pub poly: Vec<F>,
 }
 
@@ -1126,7 +1126,7 @@ pub fn evaluate_over_foldable_domain_2<F: PrimeField>(
     Type1Polynomial { poly: coeffs.poly }
 }
 
-fn interpolate_over_boolean_hypercube_with_copy<F: PrimeField>(
+pub fn interpolate_over_boolean_hypercube_with_copy<F: PrimeField>(
     evals: &Type2Polynomial<F>,
 ) -> (Type2Polynomial<F>, Type1Polynomial<F>) {
     //iterate over array, replacing even indices with (evals[i] - evals[(i+1)])
@@ -1180,7 +1180,7 @@ pub fn log2_strict(n: usize) -> usize {
     res as usize
 }
 
-fn merkelize<F: PrimeField, H: Hash>(values: &Type1Polynomial<F>) -> Vec<Vec<Output<H>>> {
+pub fn merkelize<F: PrimeField, H: Hash>(values: &Type1Polynomial<F>) -> Vec<Vec<Output<H>>> {
     let log_v = log2_strict(values.poly.len());
     let mut tree = Vec::with_capacity(log_v);
     let mut hashes = vec![Output::<H>::default(); (values.poly.len() >> 1)];
@@ -1541,7 +1541,7 @@ fn basefold_get_query<F: PrimeField>(
     return (queries, indices);
 }
 
-fn get_merkle_path<H: Hash, F: PrimeField>(
+pub fn get_merkle_path<H: Hash, F: PrimeField>(
     tree: &Vec<Vec<Output<H>>>,
     mut x_index: usize,
     root: bool,
