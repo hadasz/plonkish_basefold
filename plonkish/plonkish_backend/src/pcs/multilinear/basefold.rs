@@ -82,7 +82,7 @@ pub struct BasefoldProverParams<F: PrimeField> {
     table_w_weights: Vec<Vec<(F, F)>>,
     table: Vec<Vec<F>>,
     num_verifier_queries: usize,
-    num_vars: usize,
+    pub num_vars: usize,
     num_rounds: usize,
     rs_basecode: bool,
 }
@@ -101,9 +101,9 @@ pub struct BasefoldVerifierParams<F: PrimeField> {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(bound(serialize = "F: Serialize", deserialize = "F: DeserializeOwned"))]
 pub struct BasefoldCommitment<F: PrimeField, H: Hash> {
-    codeword: Type1Polynomial<F>,
+    pub codeword: Type1Polynomial<F>,
     codeword_tree: Vec<Vec<Output<H>>>,
-    bh_evals: Type1Polynomial<F>,
+    pub bh_evals: Type1Polynomial<F>,
 }
 
 impl<F: PrimeField, H: Hash> Default for BasefoldCommitment<F, H> {
