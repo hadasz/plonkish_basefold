@@ -2,7 +2,6 @@ use ctr;
 use crate::util::{BigUint, Itertools, new_fields::{Mersenne127,Mersenne61}};
 use halo2_curves::{
     bn256, grumpkin,
-    pairing::{self, MillerLoopResult},
     pasta::{pallas, vesta},
 };
 use num_integer::Integer;
@@ -21,6 +20,8 @@ pub use halo2_curves::{
     },
     Coordinates, CurveAffine, CurveExt,
 };
+use halo2_proofs::halo2curves::pairing;
+use halo2_proofs::halo2curves::pairing::MillerLoopResult;
 pub use msm::{fixed_base_msm, variable_base_msm, window_size, window_table};
 
 
@@ -110,9 +111,9 @@ fn bench_horner(){
     let test2 = Instant::now();
     horner_new(&poly.evals()[..],&Mersenne61::ONE);
     println!("new {:?}", test2.elapsed());
-    
 
-    
+
+
 }
 pub fn steps<F: Field>(start: F) -> impl Iterator<Item = F> {
     steps_by(start, F::ONE)
