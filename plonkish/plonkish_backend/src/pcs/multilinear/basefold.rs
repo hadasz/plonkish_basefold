@@ -78,9 +78,9 @@ pub struct BasefoldParams<F: PrimeField> {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct BasefoldProverParams<F: PrimeField> {
-    log_rate: usize,
+    pub log_rate: usize,
     table_w_weights: Vec<Vec<(F, F)>>,
-    table: Vec<Vec<F>>,
+    pub table: Vec<Vec<F>>,
     num_verifier_queries: usize,
     pub num_vars: usize,
     num_rounds: usize,
