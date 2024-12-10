@@ -17,7 +17,7 @@ pub use brakedown::{
     MultilinearBrakedown, MultilinearBrakedownCommitment, MultilinearBrakedownParams,
 };
 pub use basefold::{
-    Basefold, BasefoldCommitment, BasefoldParams, BasefoldExtParams, Type2Polynomial, interpolate_over_boolean_hypercube_with_copy
+    Basefold, BasefoldCommitment, BasefoldParams, BasefoldExtParams, Type2Polynomial, interpolate_over_boolean_hypercube_with_copy, BasefoldVerifierParams, evaluate_over_foldable_domain, BasefoldProverParams
 };
 pub use gemini::Gemini;
 pub use hyrax::{MultilinearHyrax, MultilinearHyraxCommitment, MultilinearHyraxParams};
