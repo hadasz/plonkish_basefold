@@ -1,6 +1,8 @@
 #![allow(warnings, unused)]
 pub mod arithmetic;
 pub mod code;
+pub mod avx_int_types;
+pub mod binary_extension_fields;
 pub mod expression;
 pub mod hash;
 pub mod parallel;
@@ -8,6 +10,7 @@ mod timer;
 pub mod ff_255;
 pub mod goldilocksMont;
 pub mod transcript;
+pub mod blaze_transcript;
 pub mod new_fields;
 pub mod play_field;
 pub mod mersenne_61_mont;

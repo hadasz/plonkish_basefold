@@ -14,6 +14,7 @@ generic-array = { version = "0.14.7", features = ["serde"] }
 bitvec = "1.0.1"
 itertools = "0.13.0"
 num-bigint = "0.4.6"
+num-traits = "0.2.19"
 num-integer = "0.1.46"
 rand = "0.8.5"
 serde = { version = "1.0.152", features = ["derive"] }

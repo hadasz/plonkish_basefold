@@ -68,8 +68,8 @@ type SumCheck<F> = ClassicSumCheck<CoefficientsProver<F>>;
 pub struct BasefoldParams<F: PrimeField> {
     log_rate: usize,
     num_verifier_queries: usize,
-    num_vars: usize,
-    num_rounds: Option<usize>,
+    pub num_vars: usize,
+    pub num_rounds: Option<usize>,
     table_w_weights: Vec<Vec<(F, F)>>,
     table: Vec<Vec<F>>,
     rng: ChaCha8Rng,
@@ -90,10 +90,10 @@ pub struct BasefoldProverParams<F: PrimeField> {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct BasefoldVerifierParams<F: PrimeField> {
     rng: ChaCha8Rng,
-    num_vars: usize,
+    pub num_vars: usize,
     log_rate: usize,
     num_verifier_queries: usize,
-    num_rounds: usize,
+    pub num_rounds: usize,
     table_w_weights: Vec<Vec<(F, F)>>,
     rs_basecode: bool,
 }
@@ -1269,7 +1269,7 @@ fn build_eq_x_r_helper<F: PrimeField>(r: &[F], buf: &mut Vec<F>) {
     }
 }
 
-fn sum_check_first_round<F: PrimeField>(
+pub fn sum_check_first_round<F: PrimeField>(
     mut eq: &mut Type1Polynomial<F>,
     mut bh_values: &mut Type1Polynomial<F>,
 ) -> Vec<F> {
@@ -1449,7 +1449,7 @@ fn time_sumcheck() {
     println!("now.elased() {:?}", now.elapsed());
 }
 
-fn sum_check_challenge_round<F: PrimeField>(
+pub fn sum_check_challenge_round<F: PrimeField>(
     mut eq: &mut Type1Polynomial<F>,
     mut bh_values: &mut Type1Polynomial<F>,
     challenge: F,

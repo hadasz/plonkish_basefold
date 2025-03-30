@@ -4,7 +4,7 @@ use crate::{
     util::{arithmetic::Field, end_timer, izip, parallel::parallelize, start_timer, Itertools},
     Error,
 };
-
+pub mod blaze;
 mod brakedown;
 mod gemini;
 mod hyrax;
