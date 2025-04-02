@@ -14,7 +14,7 @@ impl plonkish_backend::pcs::multilinear::BasefoldExtParams for Ten {
     }
 
     fn get_rs_basecode() -> bool{
-	true
+    true
     }
 }
 #[derive(Debug)]
@@ -32,7 +32,7 @@ impl plonkish_backend::pcs::multilinear::BasefoldExtParams for Eleven {
         return 401;
     }
     fn get_rs_basecode() -> bool{
-	true
+    true
     }    
 }
 #[derive(Debug)]
@@ -50,9 +50,11 @@ impl plonkish_backend::pcs::multilinear::BasefoldExtParams for TwoFiftySixBaseco
         return 694;
     }
     fn get_rs_basecode() -> bool{
-	true
+    true
     }    
+
 }
+
 
 #[derive(Debug)]
 pub struct BasefoldFri {}
@@ -69,7 +71,64 @@ impl plonkish_backend::pcs::multilinear::BasefoldExtParams for BasefoldFri {
         return 401;
     }
     fn get_rs_basecode() -> bool{
-	false
+    false
+    }    
+}
+
+
+#[derive(Debug)]
+pub struct BasefoldFriR2 {}
+impl plonkish_backend::pcs::multilinear::BasefoldExtParams for BasefoldFriR2 {
+    fn get_rate() -> usize {
+        return 1;
+    }
+
+    fn get_basecode_rounds() -> usize {
+        return 0;
+    }
+
+    fn get_reps() -> usize {
+        return 401;
+    }
+    fn get_rs_basecode() -> bool{
+    false
+    }    
+}
+
+#[derive(Debug)]
+pub struct BasefoldFriR4 {}
+impl plonkish_backend::pcs::multilinear::BasefoldExtParams for BasefoldFriR4 {
+    fn get_rate() -> usize {
+        return 2;
+    }
+
+    fn get_basecode_rounds() -> usize {
+        return 0;
+    }
+
+    fn get_reps() -> usize {
+        return 401;
+    }
+    fn get_rs_basecode() -> bool{
+    false
+    }    
+}
+#[derive(Debug)]
+pub struct BasefoldFriR8 {}
+impl plonkish_backend::pcs::multilinear::BasefoldExtParams for BasefoldFriR8 {
+    fn get_rate() -> usize {
+        return 3;
+    }
+
+    fn get_basecode_rounds() -> usize {
+        return 0;
+    }
+
+    fn get_reps() -> usize {
+        return 401;
+    }
+    fn get_rs_basecode() -> bool{
+    false
     }    
 }
 
@@ -88,7 +147,7 @@ impl plonkish_backend::pcs::multilinear::BasefoldExtParams for TwoFiftySixBaseco
         return 1550;
     }
     fn get_rs_basecode() -> bool{
-	true
+    true
     }    
 }
 
@@ -107,7 +166,7 @@ impl plonkish_backend::pcs::multilinear::BasefoldExtParams for Twelve {
         return 422;
     }
     fn get_rs_basecode() -> bool{
-	true
+    true
     }    
 }
 #[derive(Debug)]
@@ -125,7 +184,7 @@ impl plonkish_backend::pcs::multilinear::BasefoldExtParams for Thirteen {
         return 445;
     }
     fn get_rs_basecode() -> bool{
-	true
+    true
     }    
 }
 #[derive(Debug)]
@@ -143,7 +202,7 @@ impl plonkish_backend::pcs::multilinear::BasefoldExtParams for Fourteen {
         return 470;
     }
     fn get_rs_basecode() -> bool{
-	true
+    true
     }    
 }
 #[derive(Debug)]    
@@ -161,7 +220,7 @@ impl plonkish_backend::pcs::multilinear::BasefoldExtParams for Fifteen {
         return 497;
     }
     fn get_rs_basecode() -> bool{
-	true
+    true
     }    
 }
 #[derive(Debug)]
@@ -179,7 +238,7 @@ impl plonkish_backend::pcs::multilinear::BasefoldExtParams for Sixteen {
         return 528;
     }
     fn get_rs_basecode() -> bool{
-	true
+    true
     }    
 }
 #[derive(Debug)]
@@ -197,7 +256,7 @@ impl plonkish_backend::pcs::multilinear::BasefoldExtParams for Seventeen {
         return 561;
     }
     fn get_rs_basecode() -> bool{
-	true
+    true
     }    
 }
 #[derive(Debug)]
@@ -215,7 +274,7 @@ impl plonkish_backend::pcs::multilinear::BasefoldExtParams for Eighteen {
         return 599;
     }
     fn get_rs_basecode() -> bool{
-	true
+    true
     }    
 }
 #[derive(Debug)]
@@ -233,7 +292,7 @@ impl plonkish_backend::pcs::multilinear::BasefoldExtParams for Nineteen {
         return 641;
     }
     fn get_rs_basecode() -> bool{
-	true
+    true
     }    
 }
 #[derive(Debug)]
@@ -251,7 +310,7 @@ impl plonkish_backend::pcs::multilinear::BasefoldExtParams for Twenty {
         return 689;
     }
     fn get_rs_basecode() -> bool{
-	true
+    true
     }    
 }
 #[derive(Debug)]
@@ -269,7 +328,7 @@ impl plonkish_backend::pcs::multilinear::BasefoldExtParams for TwentyOne {
         return 744;
     }
     fn get_rs_basecode() -> bool{
-	true
+    true
     }    
 }
 #[derive(Debug)]
@@ -287,7 +346,7 @@ impl plonkish_backend::pcs::multilinear::BasefoldExtParams for TwentyTwo {
         return 808;
     }
     fn get_rs_basecode() -> bool{
-	true
+    true
     }    
 }
 #[derive(Debug)]
@@ -305,7 +364,7 @@ impl plonkish_backend::pcs::multilinear::BasefoldExtParams for TwentyThree {
         return 882;
     }
     fn get_rs_basecode() -> bool{
-	true
+    true
     }
 }
 #[derive(Debug)]
@@ -323,7 +382,7 @@ impl plonkish_backend::pcs::multilinear::BasefoldExtParams for TwentyFour {
         return 971;
     }
     fn get_rs_basecode() -> bool{
-	true
+    true
     }    
 }
 #[derive(Debug)]
@@ -341,7 +400,7 @@ impl plonkish_backend::pcs::multilinear::BasefoldExtParams for TwentyFive {
         return 1077;
     }
     fn get_rs_basecode() -> bool{
-	true
+    true
     }    
 }
 #[derive(Debug)]
@@ -359,7 +418,7 @@ impl plonkish_backend::pcs::multilinear::BasefoldExtParams for TwentySix {
         return 1208;
     }
     fn get_rs_basecode() -> bool{
-	true
+    true
     }    
 }
 
@@ -378,7 +437,7 @@ impl plonkish_backend::pcs::multilinear::BasefoldExtParams for Ten8 {
         return 269;
     }
     fn get_rs_basecode() -> bool{
-	true
+    true
     }    
 }
 #[derive(Debug)]
@@ -396,7 +455,7 @@ impl plonkish_backend::pcs::multilinear::BasefoldExtParams for Eleven8 {
         return 280;
     }
     fn get_rs_basecode() -> bool{
-	true
+    true
     }    
 }
 #[derive(Debug)]
@@ -414,7 +473,7 @@ impl plonkish_backend::pcs::multilinear::BasefoldExtParams for Twelve8 {
         return 292;
     }
     fn get_rs_basecode() -> bool{
-	true
+    true
     }    
 }
 #[derive(Debug)]
@@ -432,7 +491,7 @@ impl plonkish_backend::pcs::multilinear::BasefoldExtParams for Thirteen8 {
         return 305;
     }
     fn get_rs_basecode() -> bool{
-	true
+    true
     }    
 }
 #[derive(Debug)]
@@ -450,7 +509,7 @@ impl plonkish_backend::pcs::multilinear::BasefoldExtParams for Fourteen8 {
         return 319;
     }
     fn get_rs_basecode() -> bool{
-	true
+    true
     }    
 }
 #[derive(Debug)]    
@@ -468,7 +527,7 @@ impl plonkish_backend::pcs::multilinear::BasefoldExtParams for Fifteen8 {
         return 333;
     }
     fn get_rs_basecode() -> bool{
-	true
+    true
     }    
 }
 #[derive(Debug)]
@@ -486,7 +545,7 @@ impl plonkish_backend::pcs::multilinear::BasefoldExtParams for Sixteen8 {
         return 349;
     }
     fn get_rs_basecode() -> bool{
-	true
+    true
     }    
 }
 #[derive(Debug)]
@@ -504,7 +563,7 @@ impl plonkish_backend::pcs::multilinear::BasefoldExtParams for Seventeen8 {
         return 366;
     }
     fn get_rs_basecode() -> bool{
-	true
+    true
     }    
 }
 #[derive(Debug)]
@@ -522,7 +581,7 @@ impl plonkish_backend::pcs::multilinear::BasefoldExtParams for Eighteen8 {
         return 384;
     }
     fn get_rs_basecode() -> bool{
-	true
+    true
     }    
 }
 #[derive(Debug)]
@@ -540,7 +599,7 @@ impl plonkish_backend::pcs::multilinear::BasefoldExtParams for Nineteen8 {
         return 403;
     }
     fn get_rs_basecode() -> bool{
-	true
+    true
     }    
 }
 #[derive(Debug)]
@@ -558,7 +617,7 @@ impl plonkish_backend::pcs::multilinear::BasefoldExtParams for Twenty8 {
         return 424;
     }
     fn get_rs_basecode() -> bool{
-	true
+    true
     }
 }
 #[derive(Debug)]
@@ -576,7 +635,7 @@ impl plonkish_backend::pcs::multilinear::BasefoldExtParams for TwentyOne8 {
         return 447;
     }
     fn get_rs_basecode() -> bool{
-	true
+    true
     }    
 }
 #[derive(Debug)]
@@ -594,7 +653,7 @@ impl plonkish_backend::pcs::multilinear::BasefoldExtParams for TwentyTwo8 {
         return 473;
     }
     fn get_rs_basecode() -> bool{
-	true
+    true
     }    
 }
 #[derive(Debug)]
@@ -612,7 +671,7 @@ impl plonkish_backend::pcs::multilinear::BasefoldExtParams for TwentyThree8 {
         return 500;
     }
     fn get_rs_basecode() -> bool{
-	true
+    true
     }    
 }
 #[derive(Debug)]
@@ -630,7 +689,7 @@ impl plonkish_backend::pcs::multilinear::BasefoldExtParams for TwentyFour8 {
         return 531;
     }
     fn get_rs_basecode() -> bool{
-	true
+    true
     }    
 }
 #[derive(Debug)]
@@ -648,7 +707,7 @@ impl plonkish_backend::pcs::multilinear::BasefoldExtParams for TwentyFive8 {
         return 565;
     }
     fn get_rs_basecode() -> bool{
-	true
+    true
     }    
 }
 #[derive(Debug)]
@@ -666,7 +725,7 @@ impl plonkish_backend::pcs::multilinear::BasefoldExtParams for TwentySix8 {
         return 603;
     }
     fn get_rs_basecode() -> bool{
-	true
+    true
     }    
 }
 

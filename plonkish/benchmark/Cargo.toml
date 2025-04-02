@@ -8,9 +8,10 @@ rand = "0.8"
 itertools = "0.10.5"
 gnuplot = "0.0.37"
 rayon =  "1.5.3"
+num-traits = "0.2.19"
 # plonkish_backend
 plonkish_backend = { path = "../plonkish_backend", features = ["benchmark"] }
-
+rand_chacha={version ="0.3.1", features=["serde1"]}
 # halo2
 halo2_proofs = { git = "https://github.com/han0110/halo2.git", branch = "feature/for-benchmark" }
 halo2_gadgets = { git = "https://github.com/han0110/halo2.git", branch = "feature/for-benchmark", features = ["unstable"] }
@@ -36,7 +37,7 @@ timer = ["plonkish_backend/timer", "halo2_proofs/print-trace", "espresso_subrout
 
 
 [[bench]]
-name = "brakedown_proof_system"
+name = "blaze_bench"
 harness = false
 
 
