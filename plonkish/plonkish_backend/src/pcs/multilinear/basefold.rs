@@ -1460,8 +1460,8 @@ pub fn sum_check_challenge_round<F: PrimeField>(
     one_level_interp_hc(&mut eq);
     one_level_interp_hc(&mut bh_values);
 
-    //    parallel_pi(&bh_values, &eq)
-    p_i(&bh_values, &eq)
+    parallel_pi(&bh_values, &eq)
+    //p_i(&bh_values, &eq)
 }
 
 fn basefold_one_round_by_interpolation_weights<F: PrimeField>(
