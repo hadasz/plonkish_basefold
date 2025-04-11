@@ -85,6 +85,7 @@ pub struct BasefoldProverParams<F: PrimeField> {
     pub num_vars: usize,
     num_rounds: usize,
     rs_basecode: bool,
+    rng: ChaCha8Rng
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -143,6 +144,8 @@ pub trait BasefoldExtParams: Debug {
     fn get_basecode_rounds() -> usize;
 
     fn get_rs_basecode() -> bool;
+
+    fn get_setup_on_fly() -> bool;
 }
 
 #[derive(Debug)]
@@ -224,7 +227,10 @@ where
     fn setup(poly_size: usize, _: usize, rng: impl RngCore) -> Result<Self::Param, Error> {
         let log_rate = V::get_rate();
         let mut test_rng = ChaCha8Rng::from_entropy();
-        let (table_w_weights, table) = get_table_aes(poly_size, log_rate, &mut test_rng);
+        let (mut table_w_weights, mut table) = (Vec::new(), Vec::new());
+        if V::get_setup_on_fly() == false{
+            (table_w_weights, table) = get_table_aes(poly_size, log_rate, &mut test_rng);
+        }
         let mut rs_basecode = false;
         if V::get_rs_basecode() == true && V::get_basecode_rounds() > 0 {
             rs_basecode = true;
@@ -253,6 +259,7 @@ where
         Ok((
             BasefoldProverParams {
                 log_rate: param.log_rate,
+                rng: param.rng.clone(),
                 table_w_weights: param.table_w_weights.clone(),
                 table: param.table.clone(),
                 num_verifier_queries: param.num_verifier_queries,
@@ -294,7 +301,10 @@ where
                 &pp.table,
             );
         } else {
-            commitment = evaluate_over_foldable_domain(pp.log_rate, coeffs, &pp.table);
+            println!("in the right place");
+           // commitment = evaluate_over_foldable_domain(pp.log_rate, coeffs, &pp.table);
+           let mut rng = pp.rng.clone();
+           commitment = evaluate_over_foldable_domain_fly_setup(pp.log_rate, coeffs, &pp.table, &mut rng);
         }
 
         let tree = merkelize::<F, H>(&commitment);
@@ -1445,6 +1455,64 @@ pub fn evaluate_over_foldable_domain<F: PrimeField>(
         poly: coeffs_with_rep,
     }
 }
+pub fn evaluate_over_foldable_domain_fly_setup<F: PrimeField>(
+    log_rate: usize,
+    mut coeffs: Type2Polynomial<F>,
+    table: &Vec<Vec<F>>,
+    mut rng: &mut ChaCha8Rng
+) -> Type1Polynomial<F> {
+    //iterate over array, replacing even indices with (evals[i] - evals[(i+1)])
+    let k = coeffs.poly.len();
+    let logk = log2_strict(k);
+    let cl = 1 << (logk + log_rate);
+    let rate = 1 << log_rate;
+
+    let mut coeffs_with_rep = vec![F::ZERO; cl];
+
+    //base code - in this case is the repetition code
+
+    for i in 0..k {
+        for j in 0..rate {
+            coeffs_with_rep[i * rate + j] = coeffs.poly[i];
+        }
+    }
+    let mut key: [u8; 16] = [0u8; 16];
+    let mut iv: [u8; 16] = [0u8; 16];
+
+    rng.set_word_pos(0);
+    rng.fill_bytes(&mut key);
+    rng.fill_bytes(&mut iv);
+    type Aes128Ctr64LE = ctr::Ctr32LE<aes::Aes128>;
+    let mut cipher = Aes128Ctr64LE::new(
+        GenericArray::from_slice(&key[..]),
+        GenericArray::from_slice(&iv[..]),
+    );
+
+    let mut chunk_size = rate; //block length of the base code
+    for i in 0..logk {
+        let level = &table[i + log_rate];
+        chunk_size = chunk_size << 1;
+
+        <Vec<F> as AsMut<[F]>>::as_mut(&mut coeffs_with_rep)
+            .chunks_mut(chunk_size)
+            .for_each(|chunk| {
+                let half_chunk = chunk_size >> 1;
+                for j in half_chunk..chunk_size {
+                    let mut rhs = chunk[j] * level[j - half_chunk];
+                    if level.len() == 0{
+                        rhs = query_point(1 << (i + log_rate + 1), j - half_chunk, &mut rng, log_rate + i,&mut cipher);
+                    }
+                    chunk[j] = chunk[j - half_chunk] - rhs;
+                    chunk[j - half_chunk] = chunk[j - half_chunk] + rhs;
+                }
+            });
+    }
+    reverse_index_bits_in_place(&mut coeffs_with_rep);
+
+    Type1Polynomial {
+        poly: coeffs_with_rep,
+    }
+}
 fn sum_check_output_challenges<F: PrimeField>(
     poly: &Vec<F>,
     point: Vec<F>,
@@ -2286,9 +2354,12 @@ mod test {
         }
 
         fn get_basecode_rounds() -> usize {
-            return 1;
+            return 0;
         }
         fn get_rs_basecode() -> bool {
+            false
+        }
+        fn get_setup_on_fly() -> bool{
             true
         }
     }

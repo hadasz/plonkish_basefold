@@ -329,6 +329,9 @@ mod test {
 	    fn get_rs_basecode() -> bool{
 		true
 	    }
+        fn get_setup_on_fly() -> bool{
+            true
+        }
 	}
 
 	type Pcs = Basefold<Fr, Blake2s,Five>;
@@ -357,13 +360,15 @@ mod test {
             + TranscriptWrite<Pcs::CommitmentChunk, F>
             + InMemoryTranscript<Param = ()>,
     {
-        for num_vars in 10..25  {
+        for num_vars in 21..22  {
 	    println!("k {:?}", num_vars);
             // Setup
             let (pp, vp) = {
                 let mut rng = OsRng;
                 let poly_size = 1 << num_vars;
+                let now = Instant::now();
                 let param = Pcs::setup(poly_size, 1, &mut rng).unwrap();
+                println!("setup time {:?}", now.elapsed());
 		println!("before trim");
                 Pcs::trim(&param, poly_size, 1).unwrap()
 
