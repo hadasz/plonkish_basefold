@@ -411,8 +411,8 @@ mod test {
     {
         for num_vars in 10..11{
 	    println!("k {:?}", num_vars);
-            let batch_size = 2;
-            let num_points = batch_size >> 1;
+            let batch_size = 128;
+            let num_points = 16;
             let mut rng = OsRng;
             // Setup
             let (pp, vp) = {

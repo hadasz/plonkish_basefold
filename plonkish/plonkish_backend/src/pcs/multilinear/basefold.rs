@@ -615,7 +615,7 @@ where
         for comm in &comms {
             transcript.write_commitment(&comm.as_ref());
         }
-        let ell = evals.len().next_power_of_two().ilog2() as usize;
+        let ell = polys.len().next_power_of_two().ilog2() as usize;
         let t = transcript.squeeze_challenges(ell);
 
         let (e,mut g, eq_ti) = create_batch_agg(
@@ -633,6 +633,7 @@ where
             log2_strict(e.len()),
             e
         );
+        assert_eq!(eq_ti.len(), polys.len());
 
         //convert to type 1
         reverse_index_bits_in_place(&mut g);
@@ -665,10 +666,10 @@ where
         let mut individual_paths: Vec<Vec<Vec<(Output<H>, Output<H>)>>> =
             Vec::with_capacity(queries_usize.len());
         for query in &queries_usize {
-            let mut comm_queries = Vec::with_capacity(evals.len());
-            let mut comm_paths = Vec::with_capacity(evals.len());
-            for eval in evals {
-                let c = comms[eval.poly()];
+            let mut comm_queries = Vec::with_capacity(comms.len());
+            let mut comm_paths = Vec::with_capacity(comms.len());
+            for comm in &comms {
+                let c = comm;
                 let res = query_codeword::<F, H>(query, &c.codeword.poly, &c.codeword_tree);
                 comm_queries.push(res.0);
                 comm_paths.push(res.1);
@@ -905,13 +906,11 @@ where
         validate_input("batch verify", vp.num_vars, [], points)?;
         transcript.read_commitments(comms.len());
 
-        let ell = evals.len().next_power_of_two().ilog2() as usize;
+        let ell = comms.len().next_power_of_two().ilog2() as usize;
 
         let t = transcript.squeeze_challenges(ell);
 
-        let eq_xt = MultilinearPolynomial::eq_xy(&t);
-        let tilde_gs_sum =
-            inner_product(evals.iter().map(Evaluation::value), &eq_xt[..evals.len()]);
+       
 
         let eq_t_i = build_eq_x_r_vec::<F>(&t).unwrap();
 
@@ -943,8 +942,8 @@ where
         let mut ind_queries = Vec::with_capacity(vp.num_verifier_queries);
         let mut count = 0;
         for i in 0..vp.num_verifier_queries {
-            let mut comms_queries = Vec::with_capacity(evals.len());
-            for j in 0..evals.len() {
+            let mut comms_queries = Vec::with_capacity(comms.len());
+            for j in 0..comms.len() {
                 let queries = transcript.read_field_elements(2).unwrap();
 
                 comms_queries.push(queries);
@@ -957,8 +956,8 @@ where
         let mut batch_paths = Vec::with_capacity(vp.num_verifier_queries);
         let mut count = 0;
         for i in 0..vp.num_verifier_queries {
-            let mut comms_merkle_paths = Vec::with_capacity(evals.len());
-            for j in 0..evals.len() {
+            let mut comms_merkle_paths = Vec::with_capacity(comms.len());
+            for j in 0..comms.len() {
                 let merkle_path = transcript
                     .read_commitments(2 * (vp.num_vars + vp.log_rate))
                     .unwrap();
@@ -1040,7 +1039,7 @@ where
 
         for vq in 0..vp.num_verifier_queries {
             for cq in 0..ind_queries[vq].len() {
-                let tree = &comms[evals[cq].poly].codeword_tree;
+                let tree = &comms[cq].codeword_tree;
                 assert_eq!(
                     tree[tree.len() - 1][0],
                     batch_paths[vq][cq].pop().unwrap().pop().unwrap()
