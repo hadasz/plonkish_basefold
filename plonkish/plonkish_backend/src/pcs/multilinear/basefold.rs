@@ -1491,6 +1491,7 @@ fn create_batch_agg<F:PrimeField,H:Hash>(
         //create tilde{g}
         let l = log2_strict(polys.len());
         let rand_point = rand_vec::<F>(l,&mut rng);
+        assert_eq!(t.len() > 0, true);
         let eq_t_i = build_eq_x_r_vec::<F>(&t).unwrap();
         let mut gib = Vec::new();
         for (i,comm) in comms.iter().enumerate(){
