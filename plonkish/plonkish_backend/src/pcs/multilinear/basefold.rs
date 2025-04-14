@@ -626,7 +626,7 @@ where
             t
         );
 
-        let batch_sumcheck = sum_check_output_challenges(
+        let (oracles, challenges) = sum_check_output_challenges(
             &g,
             Vec::new(),
             log2_strict(e.len()),
@@ -641,7 +641,7 @@ where
         let mut comm = Self::Commitment::sum_with_scalar(&eq_ti, comms.clone()); //how long / space does that take?
     
         comm.bh_evals = Type1Polynomial { poly: g };
-        let point = batch_sumcheck.1;
+        let point = challenges;
 
         let (trees, sum_check_oracles, mut oracles, bh_evals, eq, eval) = commit_phase(
             &point,
@@ -1059,7 +1059,7 @@ where
         let mut bh_evals = Type1Polynomial { poly: bh_evals };
         let mut eq = Type1Polynomial { poly: eq };
         if (!vp.rs_basecode) {
-            virtual_open(
+           /* virtual_open(
                 vp.num_vars,
                 vp.num_rounds,
                 &mut eq,
@@ -1069,7 +1069,7 @@ where
                 &mut fold_challenges,
                 &vp.table_w_weights,
                 &mut sum_check_oracles,
-            );
+            );*/
         } else {
             one_level_reverse_interp_hc(&mut bh_evals);
             reverse_index_bits_in_place(&mut bh_evals.poly); //convert to type2
@@ -2286,10 +2286,10 @@ mod test {
         }
 
         fn get_basecode_rounds() -> usize {
-            return 1;
+            return 0;
         }
         fn get_rs_basecode() -> bool {
-            true
+            false
         }
     }
 
