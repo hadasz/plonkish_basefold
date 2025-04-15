@@ -1445,7 +1445,7 @@ pub fn evaluate_over_foldable_domain<F: PrimeField>(
         poly: coeffs_with_rep,
     }
 }
-fn sum_check_output_challenges<F: PrimeField>(
+pub fn sum_check_output_challenges<F: PrimeField>(
     poly: &Vec<F>,
     point: Vec<F>,
     num_vars: usize,
