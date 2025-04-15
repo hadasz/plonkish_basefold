@@ -617,11 +617,11 @@ where
         }
         let ell = polys.len().next_power_of_two().ilog2() as usize;
         let t = transcript.squeeze_challenges(ell);
-
+        let now = Instant::now();
         let (e,mut g, eq_ti) = create_batch_agg(
             pp,
-            &polys,
-            &comms,
+            polys.len(),
+            &comms.iter().map(|c| &c.bh_evals).collect_vec(),
             &points.to_vec(),
             t
         );
@@ -633,6 +633,7 @@ where
             log2_strict(e.len()),
             e
         );
+        println!("batch sumcheck {:?}", now.elapsed());
         assert_eq!(eq_ti.len(), polys.len());
 
         //convert to type 1
@@ -640,7 +641,7 @@ where
 
         let now = Instant::now();
         let mut comm = Self::Commitment::sum_with_scalar(&eq_ti, comms.clone()); //how long / space does that take?
-    
+        println!("linear combo {:?}", now.elapsed());
         comm.bh_evals = Type1Polynomial { poly: g };
         let point = challenges;
 
@@ -1476,10 +1477,10 @@ fn sum_check_output_challenges<F: PrimeField>(
     }
     (sum_check_oracles_vec, challenges)
 }
-fn create_batch_agg<F:PrimeField,H:Hash>(
+pub fn create_batch_agg<F:PrimeField>(
         pp: &BasefoldProverParams<F>,
-        polys: &Vec<&MultilinearPolynomial<F>>,
-        comms: &Vec<&BasefoldCommitment<F, H>>,
+        num_polys:usize,
+        bh_evals: &Vec<&Type1Polynomial<F>>,
         points: &Vec<Vec<F>>,
         t: Vec<F>
     ) -> (Vec<F>,Vec<F>,Vec<F>) {
@@ -1489,13 +1490,13 @@ fn create_batch_agg<F:PrimeField,H:Hash>(
       
         let mut eq_bh = points.iter().map(|p| build_eq_x_r_vec::<F>(&p).unwrap()).flatten().collect::<Vec<_>>();
         //create tilde{g}
-        let l = log2_strict(polys.len());
+        let l = log2_strict(num_polys);
         let rand_point = rand_vec::<F>(l,&mut rng);
         assert_eq!(t.len() > 0, true);
         let eq_t_i = build_eq_x_r_vec::<F>(&t).unwrap();
         let mut gib = Vec::new();
-        for (i,comm) in comms.iter().enumerate(){
-            for eval in &comm.bh_evals.poly{
+        for (i,eval) in bh_evals.iter().enumerate(){
+            for eval in &eval.poly{
                 gib.push(eq_t_i[i] * eval);
             }
         }
@@ -1866,8 +1867,8 @@ fn sum_check_challenge_round<F: PrimeField>(
     one_level_interp_hc(&mut eq);
     one_level_interp_hc(&mut bh_values);
 
-    //    parallel_pi(&bh_values, &eq)
-    p_i(&bh_values, &eq)
+    parallel_pi(&bh_values, &eq)
+   // p_i(&bh_values, &eq)
 }
 
 fn basefold_one_round_by_interpolation_weights<F: PrimeField>(
