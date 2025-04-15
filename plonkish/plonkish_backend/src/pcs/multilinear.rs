@@ -17,7 +17,7 @@ pub use brakedown::{
     MultilinearBrakedown, MultilinearBrakedownCommitment, MultilinearBrakedownParams,
 };
 pub use basefold::{
-    Basefold, BasefoldCommitment, BasefoldParams, BasefoldExtParams, Type1Polynomial, Type2Polynomial, interpolate_over_boolean_hypercube_with_copy, BasefoldVerifierParams, evaluate_over_foldable_domain, BasefoldProverParams
+    Basefold, BasefoldCommitment, BasefoldParams, BasefoldExtParams, Type1Polynomial, Type2Polynomial, interpolate_over_boolean_hypercube_with_copy, BasefoldVerifierParams, evaluate_over_foldable_domain, create_batch_agg, BasefoldProverParams
 };
 pub use gemini::Gemini;
 pub use hyrax::{MultilinearHyrax, MultilinearHyraxCommitment, MultilinearHyraxParams};
@@ -411,8 +411,8 @@ mod test {
     {
         for num_vars in 10..11{
 	    println!("k {:?}", num_vars);
-            let batch_size = 128;
-            let num_points = 16;
+            let batch_size = 256;
+            let num_points = 256;
             let mut rng = OsRng;
             // Setup
             let (pp, vp) = {
