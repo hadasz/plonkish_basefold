@@ -169,7 +169,7 @@ pub fn setup<H: Hash>(
         None => 64,
         Some(x) => x,
     };
-    let log_rate = 1;
+    let log_rate = 2;
     let num_vars = log2_strict(poly_size);
     let mut rng: ChaCha8Rng = ChaCha8Rng::from_entropy(); //TODO - use RngCore instead so it can be passed in
     let permutation = Permutation::create(&mut rng, (poly_size * (1 << log_rate)));
@@ -199,13 +199,13 @@ pub fn setup<H: Hash>(
     //TODO: how is poly size determined? 
     let split_params = {
         let mut rng = OsRng;
-        let poly_size = 1 << (num_vars + 2 - log_num_chunks);
+        let poly_size = 1 << (num_vars + 3 - log_num_chunks);
         Pcs::<H>::setup(poly_size, 1, &mut rng).unwrap()
     };
 
     let reg_basefold_params = {
         let mut rng = OsRng;
-        let poly_size = 1 << (num_vars + 1);
+        let poly_size = 1 << (num_vars + 2);
         Pcs::<H>::setup(poly_size, 1, &mut rng).unwrap()
     };
     BlazeParams {
@@ -251,13 +251,13 @@ pub fn trim<H: Hash>(
 
     let (pp, vp) = Pcs::<H>::trim(
         &param.split_basefold_params,
-        1 << (param.num_vars - param.log_num_chunks + 2),
+        1 << (param.num_vars - param.log_num_chunks + 3),
         0,
     )
     .ok()
     .unwrap();
 
-    let (ppp, pvp) = Pcs::<H>::trim(&param.reg_basefold_params, 1 << ((param.num_vars) + 1), 0)
+    let (ppp, pvp) = Pcs::<H>::trim(&param.reg_basefold_params, 1 << ((param.num_vars) + 2), 0)
         .ok()
         .unwrap();
     (
@@ -556,7 +556,7 @@ pub fn open<F: BlazeField, H: Hash>(
 
     let now = Instant::now();
 
-    let mut raa_words = vec![u1,u2,u3,u4];
+    let mut raa_words = vec![u1,u2,u4];
     let mut raa_b128 = Vec::new();
     for word in raa_words {
         raa_b128.push(bf_to_b128_vec_long(&word));
