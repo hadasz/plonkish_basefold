@@ -328,7 +328,7 @@ where
     let mut rng = OsRng;
     let num_rows = 1 << log_rows;
     let poly_size = 1 << k;
-    let param = blaze_setup::<H>(poly_size, 1, &mut rng,Some(num_rows),Some(queries));
+    let param = blaze_setup::<H>(poly_size, 2, &mut rng,Some(num_rows),Some(queries));
     let (pp,vp) = blaze_trim::<H>(&param, poly_size, 1);
 
     let mut chacha = ChaCha8Rng::from_entropy();
