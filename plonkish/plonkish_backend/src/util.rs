@@ -14,6 +14,7 @@ pub mod blaze_transcript;
 pub mod new_fields;
 pub mod play_field;
 pub mod mersenne_61_mont;
+pub mod binius_iter;
 pub use itertools::{chain, izip, Itertools};
 pub use num_bigint::BigUint;
 pub use serde::{de::DeserializeOwned, Deserialize, Deserializer, Serialize, Serializer};

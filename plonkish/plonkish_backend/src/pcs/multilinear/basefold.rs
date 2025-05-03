@@ -2573,3 +2573,4 @@ fn get_table_aes<F: PrimeField>(
 
     return (unflattened_table_w_weights, unflattened_table);
 }
+

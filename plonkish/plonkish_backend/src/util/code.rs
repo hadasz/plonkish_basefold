@@ -1,5 +1,6 @@
 mod brakedown;
 mod raa;
+mod binary_rs;
 pub use raa::{encode_bits, encode_bits_long, Permutation,repetition_code_long, serial_accumulator_long,encode_bits_ser};
 pub use brakedown::{
     Brakedown, BrakedownSpec, BrakedownSpec1, BrakedownSpec2, BrakedownSpec3, BrakedownSpec4,
