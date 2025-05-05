@@ -1,4 +1,4 @@
-## Basefold
+## This repository contains POC implementations associated with two papers: BaseFold (eprint/2023/1705) and Blaze (eprint/2024/1609)
 
 **This is a fork of https://github.com/han0110/plonkish**, that includes an implementation of BasefoldPCS, Blaze and an implementation of the Zeromorph compilation of FRI (for benchmarking purposes)
 
