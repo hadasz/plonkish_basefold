@@ -281,6 +281,11 @@ mod additive {
     }
 }
 
+/// Returns the code type to be used - either "binary_rs" or "aes"
+pub fn get_code_type() -> &'static str {
+    "binary_rs"
+}
+
 #[cfg(test)]
 mod test {
     use crate::{
@@ -329,6 +334,9 @@ mod test {
 	    fn get_rs_basecode() -> bool{
 		true
 	    }
+        fn get_code_type() -> String{
+            "binary_rs".to_string()
+        }
 	}
 
 	type Pcs = Basefold<Fr, Blake2s,Five>;

@@ -192,6 +192,10 @@ pub fn setup<H: Hash>(
         fn get_rs_basecode() -> bool {
             false
         }
+
+        fn get_code_type() -> String {
+            "random".to_string()
+        }
     }
     //todo: make sure this is correct
     type Pcs<H> = Basefold<B128, H, Five>;
@@ -245,6 +249,10 @@ pub fn trim<H: Hash>(
         }
         fn get_rs_basecode() -> bool {
             false
+        }
+
+        fn get_code_type() -> String {
+            "binary_rs".to_string()
         }
     }
     let num_vars = log2_strict(poly_size);
@@ -517,6 +525,10 @@ pub fn open<F: BlazeField, H: Hash>(
         }
         fn get_rs_basecode() -> bool {
             false
+        }
+
+        fn get_code_type() -> String {
+            "random".to_string()
         }
     }
     let row_size = comm.bh_evals[0].len();
@@ -935,6 +947,10 @@ pub fn verify<F: BlazeField, H: Hash>(
         fn get_rs_basecode() -> bool {
             false
         }
+
+        fn get_code_type() -> String {
+            "binary_rs".to_string()
+        }
     }
     let point = iter::repeat_with(|| b128transcript.squeeze_challenges(vp.num_vars))
         .take(1)
@@ -1274,6 +1290,10 @@ fn test_basefold_binary() {
         fn get_rs_basecode() -> bool {
             false
         }
+
+        fn get_code_type() -> String {
+            "binary_rs".to_string()
+        }
     }
     let num_vars = 10;
 
@@ -1345,6 +1365,10 @@ fn test_batch_basefold_binary() {
         }
         fn get_rs_basecode() -> bool {
             false
+        }
+
+        fn get_code_type() -> String {
+            "binary_rs".to_string()
         }
     }
 

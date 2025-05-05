@@ -1,6 +1,5 @@
 #![feature(portable_simd)]
 #![allow(clippy::op_ref)]
-#![feature(unchecked_math)]
 #![feature(stdarch_x86_avx512)]
 pub mod accumulation;
 pub mod backend;

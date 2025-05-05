@@ -11,7 +11,7 @@ use crate::{
     poly::{multilinear::MultilinearPolynomial, Polynomial},
     util::{
         arithmetic::{div_ceil, horner, inner_product, steps, BatchInvert, Field, PrimeField},
-        code::{Brakedown, BrakedownSpec, LinearCodes},
+        code::{Brakedown, BrakedownSpec, LinearCodes, binary_rs::{BinarySubspace, OnTheFlyTwiddleAccess, TwiddleAccess}},
         expression::{Expression, Query, Rotation},
         hash::{Hash, Output},
         new_fields::{Mersenne127, Mersenne61},
@@ -96,6 +96,7 @@ pub struct BasefoldVerifierParams<F: PrimeField> {
     pub num_rounds: usize,
     table_w_weights: Vec<Vec<(F, F)>>,
     rs_basecode: bool,
+    code_type: String,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -143,6 +144,8 @@ pub trait BasefoldExtParams: Debug {
     fn get_basecode_rounds() -> usize;
 
     fn get_rs_basecode() -> bool;
+
+    fn get_code_type() -> String;
 }
 
 #[derive(Debug)]
@@ -224,7 +227,11 @@ where
     fn setup(poly_size: usize, _: usize, rng: impl RngCore) -> Result<Self::Param, Error> {
         let log_rate = V::get_rate();
         let mut test_rng = ChaCha8Rng::from_entropy();
-        let (table_w_weights, table) = get_table_aes(poly_size, log_rate, &mut test_rng);
+        let (table_w_weights, table) = if V::get_code_type() == "binary_rs" {
+            get_table_additive_binary(poly_size, log_rate, &mut test_rng)
+        } else {
+            get_table_aes(poly_size, log_rate, &mut test_rng)
+        };
         let mut rs_basecode = false;
         if V::get_rs_basecode() == true && V::get_basecode_rounds() > 0 {
             rs_basecode = true;
@@ -268,6 +275,7 @@ where
                 num_rounds: rounds,
                 table_w_weights: param.table_w_weights.clone(),
                 rs_basecode: param.rs_basecode,
+                code_type: V::get_code_type(),
             },
         ))
     }
@@ -706,6 +714,7 @@ where
             &roots,
             vp.rng.clone(),
             &eval,
+            &vp.code_type
         );
         let mut next_oracle = Type1Polynomial { poly: final_oracle };
         let mut bh_evals = Type1Polynomial { poly: bh_evals };
@@ -901,6 +910,7 @@ where
             &roots,
             vp.rng.clone(),
             &eval,
+            &vp.code_type
         );
 
         for vq in 0..vp.num_verifier_queries {
@@ -1682,6 +1692,28 @@ pub fn query_point<F: PrimeField>(
 
     return el;
 }
+
+pub fn query_point_binary_rs<F: PrimeField>(
+    block_length: usize,
+    eval_index: usize,
+    level: usize,
+    subspace: &BinarySubspace<F>,
+) -> F {
+    let level_index = eval_index % block_length;
+    let half_block = block_length >> 1;
+    let pair_index = level_index % half_block;
+    
+    // Get the twiddle pair for this level and index
+   // let (w1, w2) = subspace.get_pair(level, pair_index);
+    todo!()
+    // If we're in the second half of the block, negate the value
+  //  if level_index >= half_block {
+  //      w2
+  //  } else {
+  //      w1
+ //   }
+}
+
 pub fn query_root_table_from_rng<F: PrimeField>(
     level: usize,
     index: usize,
@@ -1872,18 +1904,23 @@ mod test {
 
     impl BasefoldExtParams for Five {
         fn get_reps() -> usize {
-            return 33;
+            33
         }
 
         fn get_rate() -> usize {
-            return 3;
+            3
         }
 
         fn get_basecode_rounds() -> usize {
-            return 0;
+            0
         }
+
         fn get_rs_basecode() -> bool {
             false
+        }
+
+        fn get_code_type() -> String {
+            "Five".to_string()
         }
     }
 
@@ -2356,6 +2393,7 @@ fn verifier_query_phase<F: PrimeField, H: Hash>(
     roots: &Vec<Output<H>>,
     rng: ChaCha8Rng,
     eval: &F,
+    code_type: &str
 ) -> Vec<usize> {
     let n = (1 << (num_vars + log_rate));
     let mut queries_usize: Vec<usize> = query_challenges
@@ -2380,6 +2418,7 @@ fn verifier_query_phase<F: PrimeField, H: Hash>(
         GenericArray::from_slice(&key[..]),
         GenericArray::from_slice(&iv[..]),
     );
+    let mut subspace = BinarySubspace::<F>::default();
     queries_usize
         .par_iter_mut()
         .enumerate()
@@ -2402,13 +2441,22 @@ fn verifier_query_phase<F: PrimeField, H: Hash>(
                 let ri0 = reverse_bits(cur_index, num_vars + log_rate - i);
                 let ri1 = reverse_bits(other_index, num_vars + log_rate - i);
                 let now = Instant::now();
-                let x0: F = query_point(
-                    1 << (num_vars + log_rate - i),
-                    ri0,
-                    &mut rng,
-                    num_vars + log_rate - i - 1,
-                    &mut cipher,
-                );
+                let x0: F = if code_type == "binary_rs" {
+                    query_point_binary_rs(
+                        1 << (num_vars + log_rate - i),
+                        ri0,
+                        num_vars + log_rate - i - 1,
+                        &subspace
+                    )
+                } else {
+                    query_point(
+                        1 << (num_vars + log_rate - i),
+                        ri0,
+                        &mut rng,
+                        num_vars + log_rate - i - 1,
+                        &mut cipher,
+                    )
+                };
                 let x1 = -x0;
 
                 let res = interpolate2(
@@ -2567,6 +2615,64 @@ fn get_table_aes<F: PrimeField>(
     for i in 1..lg_n {
         unflattened_table[i] = flat_table[(1 << i)..(1 << (i + 1))].to_vec();
         let mut level = flat_table_w_weights[(1 << i)..(1 << (i + 1))].to_vec();
+        reverse_index_bits_in_place(&mut level);
+        unflattened_table_w_weights[i] = level;
+    }
+
+    return (unflattened_table_w_weights, unflattened_table);
+}
+//dimension of this table is double the size as it contains 
+pub fn get_table_additive_binary<F: PrimeField>(
+    poly_size: usize,
+    rate: usize,
+    rng: &mut ChaCha8Rng,
+) -> (Vec<Vec<(F, F)>>, Vec<Vec<F>>) {
+    let lg_n: usize = rate + log2_strict(poly_size);
+
+    let now = Instant::now();
+
+    // Create a binary subspace for the twiddle factors
+    let subspace = BinarySubspace::<F>::with_dim(lg_n).ok().unwrap();
+    let twiddle_accesses = OnTheFlyTwiddleAccess::generate(&subspace).unwrap();
+    
+    // Generate flat table using twiddle factors
+    let mut flat_table = Vec::with_capacity(1 << (lg_n+1));
+    //1 to lg_n
+    for j in 1..lg_n{
+        for i in 0..(1 << j){
+            println!("j,i {:?} {:?}", j,i);
+            flat_table.push(twiddle_accesses[j-1].get(i)); 
+        }
+    }
+   
+
+    let mut weights: Vec<F> = flat_table
+        .par_chunks_exact(2)
+        .map(|c| c[1] - c[0])
+        .collect();
+
+    let mut scratch_space = vec![F::ZERO; weights.len()];
+    BatchInverter::invert_with_external_scratch(&mut weights, &mut scratch_space);
+
+    let mut flat_table_w_weights = Vec::new();
+    for (i,w) in weights.iter().enumerate(){
+        flat_table_w_weights.push((flat_table[i], *w));
+        flat_table_w_weights.push((flat_table[i+1],*w));
+    }
+
+    let mut unflattened_table_w_weights = vec![Vec::new(); lg_n];
+    let mut unflattened_table = vec![Vec::new(); lg_n];
+
+    let mut level_weights = flat_table_w_weights[0..2].to_vec();
+    reverse_index_bits_in_place(&mut level_weights);
+    unflattened_table_w_weights[0] = level_weights;
+
+    unflattened_table[0] = flat_table[0..2].to_vec();
+    for i in 1..lg_n {
+        let start = 1 << (i);
+        let end = 1 << i+1;
+        unflattened_table[i] = flat_table[start..end].to_vec();
+        let mut level = flat_table_w_weights[start..end].to_vec();
         reverse_index_bits_in_place(&mut level);
         unflattened_table_w_weights[i] = level;
     }
