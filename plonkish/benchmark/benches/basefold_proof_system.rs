@@ -61,6 +61,9 @@ impl plonkish_backend::pcs::multilinear::BasefoldExtParams for P{
     fn get_reps() -> usize{
 	return 1000;
     }
+    fn get_code_type() -> String{
+        "random".to_string()
+    }
 }
 const OUTPUT_DIR: &str = "./bench_data/basefold_256_fri";
 

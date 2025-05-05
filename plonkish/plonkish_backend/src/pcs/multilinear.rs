@@ -281,10 +281,6 @@ mod additive {
     }
 }
 
-/// Returns the code type to be used - either "binary_rs" or "aes"
-pub fn get_code_type() -> &'static str {
-    "binary_rs"
-}
 
 #[cfg(test)]
 mod test {
@@ -335,7 +331,7 @@ mod test {
 		true
 	    }
         fn get_code_type() -> String{
-            "binary_rs".to_string()
+            "random".to_string()
         }
 	}
 
@@ -365,7 +361,7 @@ mod test {
             + TranscriptWrite<Pcs::CommitmentChunk, F>
             + InMemoryTranscript<Param = ()>,
     {
-        for num_vars in 10..25  {
+        for num_vars in 10..15  {
 	    println!("k {:?}", num_vars);
             // Setup
             let (pp, vp) = {

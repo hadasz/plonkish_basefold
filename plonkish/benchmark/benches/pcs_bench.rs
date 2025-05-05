@@ -70,6 +70,9 @@ impl BasefoldExtParams for P{
     fn get_rs_basecode() -> bool{
 	true
     }
+    fn get_code_type() -> String{
+        "random".to_string()
+    }
 }
 fn main() {
     let (systems,  k_range) = parse_args();

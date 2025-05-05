@@ -425,7 +425,7 @@ fn test_one(){
 }
 impl Field for B128 {
    const ZERO: B128 = Self { value: [0,0]};//todo!();//Self{ value: None };
-   const ONE: B128 = Self { value: [1,0]}; //todo!();//Self{ value: None };
+   const ONE: B128 = Self { value: [0,1]}; //todo!();//Self{ value: None };
 
    //todo, change this to use the rng it is being passed and do something directly 
     fn random(mut rng: impl RngCore) -> Self {

@@ -1920,7 +1920,7 @@ mod test {
         }
 
         fn get_code_type() -> String {
-            "Five".to_string()
+            "random".to_string()
         }
     }
 
@@ -2418,7 +2418,7 @@ fn verifier_query_phase<F: PrimeField, H: Hash>(
         GenericArray::from_slice(&key[..]),
         GenericArray::from_slice(&iv[..]),
     );
-    let mut subspace = BinarySubspace::<F>::default();
+    let mut subspace = BinarySubspace::<F>::with_dim(num_vars).ok().unwrap();
     queries_usize
         .par_iter_mut()
         .enumerate()

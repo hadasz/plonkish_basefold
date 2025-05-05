@@ -252,7 +252,7 @@ pub fn trim<H: Hash>(
         }
 
         fn get_code_type() -> String {
-            "binary_rs".to_string()
+            "random".to_string()
         }
     }
     let num_vars = log2_strict(poly_size);
@@ -949,7 +949,7 @@ pub fn verify<F: BlazeField, H: Hash>(
         }
 
         fn get_code_type() -> String {
-            "binary_rs".to_string()
+            "random".to_string()
         }
     }
     let point = iter::repeat_with(|| b128transcript.squeeze_challenges(vp.num_vars))
@@ -1292,7 +1292,7 @@ fn test_basefold_binary() {
         }
 
         fn get_code_type() -> String {
-            "binary_rs".to_string()
+            "random".to_string()
         }
     }
     let num_vars = 10;
@@ -1368,7 +1368,7 @@ fn test_batch_basefold_binary() {
         }
 
         fn get_code_type() -> String {
-            "binary_rs".to_string()
+            "random".to_string()
         }
     }
 
