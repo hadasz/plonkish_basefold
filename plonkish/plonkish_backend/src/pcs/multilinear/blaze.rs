@@ -1292,7 +1292,7 @@ fn test_basefold_binary() {
         }
 
         fn get_code_type() -> String {
-            "binary_rs".to_string()
+            "random".to_string()
         }
     }
     let num_vars = 10;

@@ -1504,8 +1504,8 @@ fn basefold_one_round_by_interpolation_weights<F: PrimeField>(
 ) -> Type1Polynomial<F> {
     let mut subspace = BinarySubspace::<F>::with_dim(num_vars + log_rate + 1).ok().unwrap();
     let twiddle_accesses = OnTheFlyTwiddleAccess::generate(&subspace).unwrap();
-
-    let level = &table[table.len() - 1 - table_offset];
+    let leveli = table.len() - 1 - table_offset;
+    let level = &table[leveli];
     let fold = values
         .poly
         .par_chunks_exact(2)
@@ -1513,7 +1513,7 @@ fn basefold_one_round_by_interpolation_weights<F: PrimeField>(
         .map(|(i, ys)| {
             let mut x1 = F::ZERO;
             if code_type == "binary_rs"{
-                x1 = twiddle_accesses[num_vars -  table_offset - 1].get_odd_from_even(level[i].0);
+                x1 = twiddle_accesses[num_vars + log_rate -  leveli].get_odd_from_even(level[i].0);
             }
             else{
                 x1 = -level[i].0;
@@ -1733,11 +1733,12 @@ pub fn query_point_binary_rs<F: PrimeField>(
 ) -> F {
     let level_index = eval_index % block_length;
     let half_block = block_length >> 1;
-    let pair_index = level_index % half_block;
+    let left_index = level_index % half_block;
 
     let twiddle_accesses = OnTheFlyTwiddleAccess::generate(&subspace).unwrap();
-    
-    twiddle_accesses[level].get(eval_index)
+
+    let (w_0,w_1) = twiddle_accesses[log2_strict(block_length) - level].get_pair(level,left_index);
+    w_0
 }
 
 pub fn query_root_table_from_rng<F: PrimeField>(
@@ -2364,7 +2365,7 @@ fn commit_phase<F: PrimeField, H: Hash>(
         sum_check_oracle = sum_check_challenge_round(&mut eq, &mut bh_evals, challenge);
 
         sum_check_oracles_vec.push(sum_check_oracle.clone());
-        println!("prover");
+
         oracles.push(basefold_one_round_by_interpolation_weights::<F>(
             &table_w_weights,
             i,
@@ -2453,7 +2454,7 @@ fn verifier_query_phase<F: PrimeField, H: Hash>(
         GenericArray::from_slice(&iv[..]),
     );
     let mut subspace = BinarySubspace::<F>::with_dim(num_vars + log_rate + 1).ok().unwrap();
-    println!("VERIFIER SUBSPACE {:?}", subspace);
+
     let twiddle_accesses = OnTheFlyTwiddleAccess::generate(&subspace).unwrap();
     queries_usize
         .iter_mut()
@@ -2478,6 +2479,7 @@ fn verifier_query_phase<F: PrimeField, H: Hash>(
                 let ri1 = reverse_bits(other_index, num_vars + log_rate - i);
                 let now = Instant::now();
                 let x0: F = if code_type == "binary_rs" {
+
                     query_point_binary_rs(
                         1 << (num_vars + log_rate - i),
                         ri0,
@@ -2495,12 +2497,11 @@ fn verifier_query_phase<F: PrimeField, H: Hash>(
                 };
                 let mut x1 = F::ZERO;
                 if(code_type == "binary_rs"){
-                    x1 = twiddle_accesses[num_vars - i - 1].get_odd_from_even(x0);
+                    x1 = twiddle_accesses[i + 1].get_odd_from_even(x0);
                 }
                 else{
                     x1 = -x0;
                 }
-                
 
                 let res = interpolate2(
                     [(x0, cur_queries[i][0]), (x1, cur_queries[i][1])],
@@ -2727,9 +2728,7 @@ pub fn get_table_additive_binary<F: PrimeField>(
         reverse_index_bits_in_place(&mut level);
         unflattened_table_w_weights[i] = level;
     }
-    for i in 0..unflattened_table.len(){
-        println!("length level i {:?} : {:?}", i, unflattened_table[i].len());
-    }
+
     return (unflattened_table_w_weights, unflattened_table);
 }
 
