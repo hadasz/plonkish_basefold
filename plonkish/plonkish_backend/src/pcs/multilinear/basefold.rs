@@ -85,6 +85,7 @@ pub struct BasefoldProverParams<F: PrimeField> {
     pub num_vars: usize,
     num_rounds: usize,
     rs_basecode: bool,
+    code_type: String
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -266,6 +267,7 @@ where
                 num_vars: param.num_vars,
                 num_rounds: rounds,
                 rs_basecode: param.rs_basecode,
+                code_type: V::get_code_type(),
             },
             BasefoldVerifierParams {
                 rng: param.rng.clone(),
@@ -302,7 +304,7 @@ where
                 &pp.table,
             );
         } else {
-            commitment = evaluate_over_foldable_domain(pp.log_rate, coeffs, &pp.table);
+            commitment = evaluate_over_foldable_domain(pp.log_rate, coeffs, &pp.table,pp.code_type.clone());
         }
 
         let tree = merkelize::<F, H>(&commitment);
@@ -360,6 +362,8 @@ where
             pp.num_vars,
             pp.num_rounds,
             &pp.table_w_weights,
+            pp.code_type.clone(),
+            pp.log_rate
         );
 
         let (queried_els, queries_usize_) =
@@ -511,6 +515,8 @@ where
             pp.num_vars,
             pp.num_rounds,
             &pp.table_w_weights,
+            pp.code_type.clone(),
+            pp.log_rate
         );
 
         if pp.num_rounds < pp.num_vars {
@@ -730,6 +736,8 @@ where
                 &mut fold_challenges,
                 &vp.table_w_weights,
                 &mut sum_check_oracles,
+                vp.log_rate,
+                vp.code_type.clone()
             );
         } else {
             one_level_reverse_interp_hc(&mut bh_evals);
@@ -910,7 +918,7 @@ where
             &roots,
             vp.rng.clone(),
             &eval,
-            &vp.code_type
+            &vp.code_type.clone()
         );
 
         for vq in 0..vp.num_verifier_queries {
@@ -944,6 +952,8 @@ where
                 &mut fold_challenges,
                 &vp.table_w_weights,
                 &mut sum_check_oracles,
+                vp.log_rate,
+                vp.code_type.clone()
             );
         } else {
             one_level_reverse_interp_hc(&mut bh_evals);
@@ -1068,13 +1078,15 @@ pub fn evaluate_over_foldable_domain<F: PrimeField>(
     log_rate: usize,
     mut coeffs: Type2Polynomial<F>,
     table: &Vec<Vec<F>>,
+    code_type: String
 ) -> Type1Polynomial<F> {
     //iterate over array, replacing even indices with (evals[i] - evals[(i+1)])
     let k = coeffs.poly.len();
     let logk = log2_strict(k);
     let cl = 1 << (logk + log_rate);
     let rate = 1 << log_rate;
-
+    let subspace = BinarySubspace::<F>::with_dim(log_rate+logk + 1).ok().unwrap();
+    let twiddle_accesses = OnTheFlyTwiddleAccess::generate(&subspace).ok().unwrap();
     let mut coeffs_with_rep = vec![F::ZERO; cl];
 
     //base code - in this case is the repetition code
@@ -1096,7 +1108,14 @@ pub fn evaluate_over_foldable_domain<F: PrimeField>(
                 let half_chunk = chunk_size >> 1;
                 for j in half_chunk..chunk_size {
                     let rhs = chunk[j] * level[j - half_chunk];
-                    chunk[j] = chunk[j - half_chunk] - rhs;
+                    let mut lhs = F::ZERO;
+                    if code_type == "binary_rs".to_string(){
+                        lhs = chunk[j]*twiddle_accesses[logk - i - 1].get_odd_from_even(level[j-half_chunk]);
+                    }
+                    else{
+                        lhs = -rhs;
+                    }
+                    chunk[j] = chunk[j - half_chunk] + lhs;
                     chunk[j - half_chunk] = chunk[j - half_chunk] + rhs;
                 }
             });
@@ -1479,15 +1498,28 @@ fn basefold_one_round_by_interpolation_weights<F: PrimeField>(
     table_offset: usize,
     values: &Type1Polynomial<F>,
     challenge: F,
+    num_vars:usize,
+    log_rate:usize,
+    code_type:String
 ) -> Type1Polynomial<F> {
+    let mut subspace = BinarySubspace::<F>::with_dim(num_vars + log_rate + 1).ok().unwrap();
+    let twiddle_accesses = OnTheFlyTwiddleAccess::generate(&subspace).unwrap();
+
     let level = &table[table.len() - 1 - table_offset];
     let fold = values
         .poly
         .par_chunks_exact(2)
         .enumerate()
         .map(|(i, ys)| {
+            let mut x1 = F::ZERO;
+            if code_type == "binary_rs"{
+                x1 = twiddle_accesses[num_vars -  table_offset - 1].get_odd_from_even(level[i].0);
+            }
+            else{
+                x1 = -level[i].0;
+            }
             interpolate2_weights::<F>(
-                [(level[i].0, ys[0]), (-(level[i].0), ys[1])],
+                [(level[i].0, ys[0]), (x1, ys[1])],
                 level[i].1,
                 challenge,
             )
@@ -1702,16 +1734,10 @@ pub fn query_point_binary_rs<F: PrimeField>(
     let level_index = eval_index % block_length;
     let half_block = block_length >> 1;
     let pair_index = level_index % half_block;
+
+    let twiddle_accesses = OnTheFlyTwiddleAccess::generate(&subspace).unwrap();
     
-    // Get the twiddle pair for this level and index
-   // let (w1, w2) = subspace.get_pair(level, pair_index);
-    todo!()
-    // If we're in the second half of the block, negate the value
-  //  if level_index >= half_block {
-  //      w2
-  //  } else {
-  //      w1
- //   }
+    twiddle_accesses[level].get(eval_index)
 }
 
 pub fn query_root_table_from_rng<F: PrimeField>(
@@ -1939,7 +1965,7 @@ mod test {
                 poly: poly.evals().to_vec(),
             });
 
-        let mut commitment = evaluate_over_foldable_domain(log_rate, coeffs.clone(), &table);
+        let mut commitment = evaluate_over_foldable_domain(log_rate, coeffs.clone(), &table,"random".to_string());
 
         let challenge = rand_chacha::<F>(&mut rng);
         let fold = basefold_one_round_by_interpolation_weights(
@@ -1947,12 +1973,15 @@ mod test {
             0,
             &commitment,
             challenge,
+            num_vars,
+            log_rate,
+            "random".to_string()
         );
 
         let chal_vec = vec![challenge];
         let partial_eval = multilinear_evaluation_ztoa(&mut coeffs, &chal_vec);
 
-        let mut commitment = evaluate_over_foldable_domain(log_rate, coeffs.clone(), &table);
+        let mut commitment = evaluate_over_foldable_domain(log_rate, coeffs.clone(), &table,"random".to_string());
 
         assert_eq!(commitment, fold);
 
@@ -2005,6 +2034,9 @@ mod test {
             0,
             &commitment,
             challenge,
+            num_vars,
+            log_rate,
+            "random".to_string()
         );
 
         let chal_vec = vec![challenge];
@@ -2247,6 +2279,8 @@ fn virtual_open<F: PrimeField>(
     challenges: &mut Vec<F>,
     table: &Vec<Vec<(F, F)>>,
     sum_check_oracles: &mut Vec<Vec<F>>,
+    log_rate:usize,
+    code_type:String
 ) {
     let mut rng = ChaCha8Rng::from_entropy();
     let rounds = num_vars - num_rounds;
@@ -2259,12 +2293,7 @@ fn virtual_open<F: PrimeField>(
 
         sum_check_oracles.push(sum_check_challenge_round(eq, bh_evals, challenge));
 
-        oracles.push(basefold_one_round_by_interpolation_weights::<F>(
-            &table,
-            round + num_rounds,
-            &new_oracle,
-            challenge,
-        ));
+        oracles.push(basefold_one_round_by_interpolation_weights::<F>(&table, round + num_rounds, &new_oracle, challenge,num_vars,log_rate,code_type.clone()));
         new_oracle = &oracles[round];
     }
 
@@ -2291,6 +2320,8 @@ fn commit_phase<F: PrimeField, H: Hash>(
     num_vars: usize,
     num_rounds: usize,
     table_w_weights: &Vec<Vec<(F, F)>>,
+    code_type:String,
+    log_rate:usize,
 ) -> (
     Vec<Vec<Vec<Output<H>>>>,
     Vec<Vec<F>>,
@@ -2333,12 +2364,15 @@ fn commit_phase<F: PrimeField, H: Hash>(
         sum_check_oracle = sum_check_challenge_round(&mut eq, &mut bh_evals, challenge);
 
         sum_check_oracles_vec.push(sum_check_oracle.clone());
-
+        println!("prover");
         oracles.push(basefold_one_round_by_interpolation_weights::<F>(
             &table_w_weights,
             i,
             new_oracle,
             challenge,
+            num_vars,
+            log_rate,
+            code_type.clone()
         ));
 
         new_oracle = &oracles[i];
@@ -2418,9 +2452,11 @@ fn verifier_query_phase<F: PrimeField, H: Hash>(
         GenericArray::from_slice(&key[..]),
         GenericArray::from_slice(&iv[..]),
     );
-    let mut subspace = BinarySubspace::<F>::with_dim(num_vars).ok().unwrap();
+    let mut subspace = BinarySubspace::<F>::with_dim(num_vars + log_rate + 1).ok().unwrap();
+    println!("VERIFIER SUBSPACE {:?}", subspace);
+    let twiddle_accesses = OnTheFlyTwiddleAccess::generate(&subspace).unwrap();
     queries_usize
-        .par_iter_mut()
+        .iter_mut()
         .enumerate()
         .for_each(|(qi, query_index)| {
             let mut cipher = cipher.clone();
@@ -2457,7 +2493,14 @@ fn verifier_query_phase<F: PrimeField, H: Hash>(
                         &mut cipher,
                     )
                 };
-                let x1 = -x0;
+                let mut x1 = F::ZERO;
+                if(code_type == "binary_rs"){
+                    x1 = twiddle_accesses[num_vars - i - 1].get_odd_from_even(x0);
+                }
+                else{
+                    x1 = -x0;
+                }
+                
 
                 let res = interpolate2(
                     [(x0, cur_queries[i][0]), (x1, cur_queries[i][1])],
@@ -2632,33 +2675,43 @@ pub fn get_table_additive_binary<F: PrimeField>(
     let now = Instant::now();
 
     // Create a binary subspace for the twiddle factors
-    let subspace = BinarySubspace::<F>::with_dim(lg_n).ok().unwrap();
+    let subspace = BinarySubspace::<F>::with_dim(lg_n + 1).ok().unwrap();
     let twiddle_accesses = OnTheFlyTwiddleAccess::generate(&subspace).unwrap();
     
+    
     // Generate flat table using twiddle factors
-    let mut flat_table = Vec::with_capacity(1 << (lg_n+1));
+    let mut flat_table = Vec::with_capacity(1 << (lg_n)); 
     //1 to lg_n
-    for j in 1..lg_n{
+    for j in 1..lg_n + 1{
         for i in 0..(1 << j){
-            println!("j,i {:?} {:?}", j,i);
-            flat_table.push(twiddle_accesses[j-1].get(i)); 
+            let j_t = &twiddle_accesses[lg_n - j];
+            let (w_0,w_1) = j_t.get_pair(j-1,i);
+            flat_table.push((w_0,w_1)); 
         }
     }
-   
+
 
     let mut weights: Vec<F> = flat_table
-        .par_chunks_exact(2)
-        .map(|c| c[1] - c[0])
+        .iter().map(|(w0,w1)|*w1 - *w0)
         .collect();
 
     let mut scratch_space = vec![F::ZERO; weights.len()];
     BatchInverter::invert_with_external_scratch(&mut weights, &mut scratch_space);
 
-    let mut flat_table_w_weights = Vec::new();
-    for (i,w) in weights.iter().enumerate(){
-        flat_table_w_weights.push((flat_table[i], *w));
-        flat_table_w_weights.push((flat_table[i+1],*w));
-    }
+    let mut flat_table_w_weights = flat_table
+        .iter()
+        .zip(weights)
+        .map(|(el, w)| (el.0, w))
+        .collect_vec();
+
+    assert_eq!(flat_table_w_weights.len(),flat_table.len());
+
+    let mut unflattened_table_w_weights = vec![Vec::new(); lg_n];
+    let mut unflattened_table = vec![Vec::<F>::new(); lg_n];
+
+    let mut level_weights = flat_table_w_weights[0..2].to_vec();
+    reverse_index_bits_in_place(&mut level_weights);
+    unflattened_table_w_weights[0] = level_weights;
 
     let mut unflattened_table_w_weights = vec![Vec::new(); lg_n];
     let mut unflattened_table = vec![Vec::new(); lg_n];
@@ -2667,16 +2720,16 @@ pub fn get_table_additive_binary<F: PrimeField>(
     reverse_index_bits_in_place(&mut level_weights);
     unflattened_table_w_weights[0] = level_weights;
 
-    unflattened_table[0] = flat_table[0..2].to_vec();
-    for i in 1..lg_n {
-        let start = 1 << (i);
-        let end = 1 << i+1;
-        unflattened_table[i] = flat_table[start..end].to_vec();
-        let mut level = flat_table_w_weights[start..end].to_vec();
+    unflattened_table[0] = flat_table[0..2].to_vec().iter().map(|f| f.0).collect::<Vec<_>>();
+    for i in 1..(lg_n) {
+        unflattened_table[i] = flat_table[(1 << i)..(1 << (i + 1))].to_vec().iter().map(|f| f.0).collect::<Vec<_>>();
+        let mut level = flat_table_w_weights[(1 << i)..(1 << (i + 1))].to_vec();
         reverse_index_bits_in_place(&mut level);
         unflattened_table_w_weights[i] = level;
     }
-
+    for i in 0..unflattened_table.len(){
+        println!("length level i {:?} : {:?}", i, unflattened_table[i].len());
+    }
     return (unflattened_table_w_weights, unflattened_table);
 }
 
