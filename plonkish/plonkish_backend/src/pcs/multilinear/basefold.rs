@@ -229,7 +229,7 @@ where
         let log_rate = V::get_rate();
         let mut test_rng = ChaCha8Rng::from_entropy();
         let (table_w_weights, table) = if V::get_code_type() == "binary_rs" {
-            get_table_additive_binary(poly_size, log_rate, &mut test_rng)
+            get_table_additive_binary(poly_size, log_rate)
         } else {
             get_table_aes(poly_size, log_rate, &mut test_rng)
         };
@@ -1493,6 +1493,22 @@ pub fn sum_check_challenge_round<F: PrimeField>(
     //p_i(&bh_values, &eq)
 }
 
+fn query_binary_table<F:PrimeField>(table:&Vec<Vec<(F,F)>>, level: usize, index: usize, subspace: &BinarySubspace<F>) -> F {
+    assert_eq!(table[level].len(), 1 << level);
+    let half_block = (1 << level) >> 1;
+    if index >=  half_block{
+        let even = table[level][index % half_block].0; 
+        let twiddle_accesses = OnTheFlyTwiddleAccess::generate(&subspace).unwrap();
+        twiddle_accesses[table.len() - level].get_odd_from_even(even)
+    }
+    else{
+        table[level][index].0
+    }
+
+
+
+}
+
 fn basefold_one_round_by_interpolation_weights<F: PrimeField>(
     table: &Vec<Vec<(F, F)>>,
     table_offset: usize,
@@ -1512,14 +1528,17 @@ fn basefold_one_round_by_interpolation_weights<F: PrimeField>(
         .enumerate()
         .map(|(i, ys)| {
             let mut x1 = F::ZERO;
+            let mut x0 = F::ZERO;
             if code_type == "binary_rs"{
-                x1 = twiddle_accesses[num_vars + log_rate -  leveli].get_odd_from_even(level[i].0);
+                x0 = query_binary_table(table, leveli, i, &subspace);
+                x1 = query_binary_table(table, leveli, i + (1 << (leveli - 1)), &subspace);
             }
             else{
-                x1 = -level[i].0;
+                x0 = level[i].0;
+                x1 = -x0;
             }
             interpolate2_weights::<F>(
-                [(level[i].0, ys[0]), (x1, ys[1])],
+                [(x0, ys[0]), (x1, ys[1])],
                 level[i].1,
                 challenge,
             )
@@ -1738,9 +1757,36 @@ pub fn query_point_binary_rs<F: PrimeField>(
     let twiddle_accesses = OnTheFlyTwiddleAccess::generate(&subspace).unwrap();
 
     let (w_0,w_1) = twiddle_accesses[log2_strict(block_length) - level].get_pair(level,left_index);
-    w_0
+    if level_index >= half_block{
+        w_1
+    }
+    else{
+        w_0
+    }
 }
+#[test]
+fn test_query_point(){
+    use crate::util::binary_extension_fields::B128;
 
+    //first create a table
+    let poly_size = 1 << 4;
+    let log_rate = 1;
+    let table = get_table_additive_binary::<B128>(poly_size, log_rate);
+
+    let lg_n: usize = log_rate + log2_strict(poly_size);
+    let level = lg_n - 1;
+    let index = 17;
+
+    let subspace = BinarySubspace::<B128>::with_dim(lg_n).ok().unwrap();
+    
+    let actual = query_binary_table(&table.0, level, index, &subspace);
+
+    let sim = query_point_binary_rs::<B128>(1 << lg_n, index, level, &subspace);
+
+    assert_eq!(actual,sim);
+
+
+}
 pub fn query_root_table_from_rng<F: PrimeField>(
     level: usize,
     index: usize,
@@ -2668,8 +2714,7 @@ fn get_table_aes<F: PrimeField>(
 //dimension of this table is double the size as it contains 
 pub fn get_table_additive_binary<F: PrimeField>(
     poly_size: usize,
-    rate: usize,
-    rng: &mut ChaCha8Rng,
+    rate: usize
 ) -> (Vec<Vec<(F, F)>>, Vec<Vec<F>>) {
     let lg_n: usize = rate + log2_strict(poly_size);
 
