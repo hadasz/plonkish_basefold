@@ -1502,6 +1502,8 @@ fn query_binary_table<F:PrimeField>(table:&Vec<Vec<(F,F)>>, level: usize, index:
         twiddle_accesses[table.len() - level].get_odd_from_even(even)
     }
     else{
+        println!("LVEL {:?}", level);
+        println!("INDEX {:?}", index);
         table[level][index].0
     }
 
@@ -1756,7 +1758,9 @@ pub fn query_point_binary_rs<F: PrimeField>(
 
     let twiddle_accesses = OnTheFlyTwiddleAccess::generate(&subspace).unwrap();
 
-    let (w_0,w_1) = twiddle_accesses[log2_strict(block_length) - level].get_pair(level,left_index);
+    let ri0 = reverse_bits(left_index, level);
+
+    let (w_0,w_1) = twiddle_accesses[log2_strict(block_length) - level].get_pair(level-1,ri0);
     if level_index >= half_block{
         w_1
     }
@@ -2732,6 +2736,7 @@ pub fn get_table_additive_binary<F: PrimeField>(
         for i in 0..(1 << j){
             let j_t = &twiddle_accesses[lg_n - j];
             let (w_0,w_1) = j_t.get_pair(j-1,i);
+            println!("i j left_el {:?} {:?} {:?}", i, j - 1, w_0);
             flat_table.push((w_0,w_1)); 
         }
     }
@@ -2762,16 +2767,14 @@ pub fn get_table_additive_binary<F: PrimeField>(
     let mut unflattened_table_w_weights = vec![Vec::new(); lg_n];
     let mut unflattened_table = vec![Vec::new(); lg_n];
 
-    let mut level_weights = flat_table_w_weights[0..2].to_vec();
-    reverse_index_bits_in_place(&mut level_weights);
-    unflattened_table_w_weights[0] = level_weights;
 
-    unflattened_table[0] = flat_table[0..2].to_vec().iter().map(|f| f.0).collect::<Vec<_>>();
-    for i in 1..(lg_n) {
-        unflattened_table[i] = flat_table[(1 << i)..(1 << (i + 1))].to_vec().iter().map(|f| f.0).collect::<Vec<_>>();
-        let mut level = flat_table_w_weights[(1 << i)..(1 << (i + 1))].to_vec();
+    unflattened_table[0] = vec![F::ZERO];
+    unflattened_table_w_weights[0] = vec![(F::ZERO, F::ZERO)];
+    for i in 0..(lg_n-1) {
+        unflattened_table[i+1] = flat_table[((1 << (i+1)) - 2)..((1 << (i + 2)) - 2)].to_vec().iter().map(|f| f.0).collect::<Vec<_>>();
+        let mut level = flat_table_w_weights[((1 << (i+1)) - 2)..((1 << (i + 2)) - 2)].to_vec();
         reverse_index_bits_in_place(&mut level);
-        unflattened_table_w_weights[i] = level;
+        unflattened_table_w_weights[i+1] =level;
     }
 
     return (unflattened_table_w_weights, unflattened_table);
