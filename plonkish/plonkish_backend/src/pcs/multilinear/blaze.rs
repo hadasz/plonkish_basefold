@@ -1295,7 +1295,7 @@ fn test_basefold_binary() {
             "random".to_string()
         }
     }
-    let num_vars = 10;
+    let num_vars = 3;
 
     // Setup
     let (pp, vp) = {

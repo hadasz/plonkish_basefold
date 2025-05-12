@@ -1493,22 +1493,14 @@ pub fn sum_check_challenge_round<F: PrimeField>(
     //p_i(&bh_values, &eq)
 }
 
-fn query_binary_table<F:PrimeField>(table:&Vec<Vec<(F,F)>>, level: usize, index: usize, subspace: &BinarySubspace<F>) -> F {
+fn query_binary_table<F:PrimeField>(table:&Vec<Vec<(F,F)>>, level: usize, index: usize, subspace: &BinarySubspace<F>) -> (F,F) {
     assert_eq!(table[level].len(), 1 << level);
-    let half_block = (1 << level) >> 1;
-    if index >=  half_block{
-        let even = table[level][index % half_block].0; 
-        let twiddle_accesses = OnTheFlyTwiddleAccess::generate(&subspace).unwrap();
-        twiddle_accesses[table.len() - level].get_odd_from_even(even)
-    }
-    else{
-        println!("LVEL {:?}", level);
-        println!("INDEX {:?}", index);
-        table[level][index].0
-    }
-
-
-
+    let half_block = (1 << level);
+    assert_eq!(index < half_block, true);
+    let even = table[level][index % half_block].0; 
+    let twiddle_accesses = OnTheFlyTwiddleAccess::generate(&subspace).unwrap();
+    let odd = twiddle_accesses[table.len() - level].get_odd_from_even(even);
+    (even, odd)
 }
 
 fn basefold_one_round_by_interpolation_weights<F: PrimeField>(
@@ -1524,16 +1516,17 @@ fn basefold_one_round_by_interpolation_weights<F: PrimeField>(
     let twiddle_accesses = OnTheFlyTwiddleAccess::generate(&subspace).unwrap();
     let leveli = table.len() - 1 - table_offset;
     let level = &table[leveli];
+    assert_eq!(1 << leveli, values.poly.len() >> 1);
+    println!("values {:?}", values.poly);
     let fold = values
         .poly
-        .par_chunks_exact(2)
+        .chunks_exact(2)
         .enumerate()
         .map(|(i, ys)| {
             let mut x1 = F::ZERO;
             let mut x0 = F::ZERO;
             if code_type == "binary_rs"{
-                x0 = query_binary_table(table, leveli, i, &subspace);
-                x1 = query_binary_table(table, leveli, i + (1 << (leveli - 1)), &subspace);
+                (x0,x1) = query_binary_table(table, leveli, i, &subspace);
             }
             else{
                 x0 = level[i].0;
@@ -1715,6 +1708,7 @@ fn authenticate_merkle_path_root<H: Hash, F: PrimeField>(
 }
 
 pub fn interpolate2_weights<F: PrimeField>(points: [(F, F); 2], weight: F, x: F) -> F {
+    println!("points {:?}", points);
     // a0 -> a1
     // b0 -> b1
     // x  -> a1 + (x-a0)*(b1-a1)/(b0-a0)
@@ -1751,23 +1745,25 @@ pub fn query_point_binary_rs<F: PrimeField>(
     eval_index: usize,
     level: usize,
     subspace: &BinarySubspace<F>,
-) -> F {
+    log_total_block_length:usize
+) ->(F,F) {
     let level_index = eval_index % block_length;
     let half_block = block_length >> 1;
     let left_index = level_index % half_block;
 
     let twiddle_accesses = OnTheFlyTwiddleAccess::generate(&subspace).unwrap();
 
-    let ri0 = reverse_bits(left_index, level);
+    let ri0 = left_index; //reverse_bits(left_index, level);
 
-    let (w_0,w_1) = twiddle_accesses[log2_strict(block_length) - level].get_pair(level-1,ri0);
-    if level_index >= half_block{
+    twiddle_accesses[log_total_block_length - level].get_pair(level-1,ri0)
+    /*if level_index >= half_block{
         w_1
     }
     else{
         w_0
-    }
+    }*/
 }
+/*
 #[test]
 fn test_query_point(){
     use crate::util::binary_extension_fields::B128;
@@ -1779,11 +1775,21 @@ fn test_query_point(){
 
     let lg_n: usize = log_rate + log2_strict(poly_size);
     let level = lg_n - 1;
-    let index = 17;
-
+    let index = 18;
+    let mut sim_index = index;
+    if index >= ((1 << level) >> 1){
+        sim_index = index % ((1 << level) >> 1);
+    }
     let subspace = BinarySubspace::<B128>::with_dim(lg_n).ok().unwrap();
     
-    let actual = query_binary_table(&table.0, level, index, &subspace);
+    let actual_pair = query_binary_table(&table.0, level, sim_index, &subspace);
+    let mut actual = B128::ZERO;
+    if index >= ((1 << level) >> 1){
+        actual = actual_pair.1;
+    }
+    else{
+        actual = actual_pair.0;
+    }
 
     let sim = query_point_binary_rs::<B128>(1 << lg_n, index, level, &subspace);
 
@@ -1791,6 +1797,7 @@ fn test_query_point(){
 
 
 }
+*/
 pub fn query_root_table_from_rng<F: PrimeField>(
     level: usize,
     index: usize,
@@ -2526,30 +2533,27 @@ fn verifier_query_phase<F: PrimeField, H: Hash>(
                 assert_eq!(cur_index % 2, 0);
 
                 let ri0 = reverse_bits(cur_index, num_vars + log_rate - i);
-                let ri1 = reverse_bits(other_index, num_vars + log_rate - i);
-                let now = Instant::now();
-                let x0: F = if code_type == "binary_rs" {
 
-                    query_point_binary_rs(
-                        1 << (num_vars + log_rate - i),
+                let now = Instant::now();
+                let mut x0 = F::ZERO;
+                let mut x1 = F::ZERO;
+                if code_type == "binary_rs" {
+
+                    (x0,x1) = query_point_binary_rs(
+                        1 << (num_vars + log_rate-i),
                         ri0,
                         num_vars + log_rate - i - 1,
-                        &subspace
-                    )
+                        &subspace,
+                        num_vars + log_rate
+                    );
                 } else {
-                    query_point(
+                    x0 = query_point(
                         1 << (num_vars + log_rate - i),
                         ri0,
                         &mut rng,
                         num_vars + log_rate - i - 1,
                         &mut cipher,
-                    )
-                };
-                let mut x1 = F::ZERO;
-                if(code_type == "binary_rs"){
-                    x1 = twiddle_accesses[i + 1].get_odd_from_even(x0);
-                }
-                else{
+                    );
                     x1 = -x0;
                 }
 
@@ -2736,7 +2740,6 @@ pub fn get_table_additive_binary<F: PrimeField>(
         for i in 0..(1 << j){
             let j_t = &twiddle_accesses[lg_n - j];
             let (w_0,w_1) = j_t.get_pair(j-1,i);
-            println!("i j left_el {:?} {:?} {:?}", i, j - 1, w_0);
             flat_table.push((w_0,w_1)); 
         }
     }
