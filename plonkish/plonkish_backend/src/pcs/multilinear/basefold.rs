@@ -772,6 +772,7 @@ where
         transcript: &mut impl TranscriptRead<Self::CommitmentChunk, F>,
     ) -> Result<(), Error> {
         use std::env;
+        println!("VERIFY");
 
         let comms = comms.into_iter().collect_vec();
         validate_input("batch verify", vp.num_vars, [], points)?;
@@ -799,11 +800,14 @@ where
         let mut roots: Vec<Output<H>> = Vec::with_capacity(vp.num_rounds + 1);
         let mut fold_challenges: Vec<F> = Vec::with_capacity(vp.num_rounds);
         let mut sum_check_oracles = Vec::new();
+
         for i in 0..vp.num_rounds {
+
             roots.push(transcript.read_commitment().unwrap());
             sum_check_oracles.push(transcript.read_field_elements(3).unwrap());
             fold_challenges.push(transcript.squeeze_challenge());
         }
+
         sum_check_oracles.push(transcript.read_field_elements(3).unwrap());
         let mut bh_evals = Vec::new();
         let mut eq = Vec::new();
@@ -815,6 +819,7 @@ where
                 .read_field_elements(1 << (vp.num_vars - vp.num_rounds))
                 .unwrap();
         }
+
 
         let mut query_challenges = transcript.squeeze_challenges(vp.num_verifier_queries);
 
@@ -906,6 +911,8 @@ where
             query_merkle_paths.push(merkle_paths);
         }
 
+
+        println!("verifier query phase");
         let queries_usize = verifier_query_phase::<F, H>(
             &query_challenges,
             &query_merkle_paths,
@@ -1517,7 +1524,6 @@ fn basefold_one_round_by_interpolation_weights<F: PrimeField>(
     let leveli = table.len() - 1 - table_offset;
     let level = &table[leveli];
     assert_eq!(1 << leveli, values.poly.len() >> 1);
-    println!("values {:?}", values.poly);
     let fold = values
         .poly
         .chunks_exact(2)
@@ -1708,7 +1714,6 @@ fn authenticate_merkle_path_root<H: Hash, F: PrimeField>(
 }
 
 pub fn interpolate2_weights<F: PrimeField>(points: [(F, F); 2], weight: F, x: F) -> F {
-    println!("points {:?}", points);
     // a0 -> a1
     // b0 -> b1
     // x  -> a1 + (x-a0)*(b1-a1)/(b0-a0)
@@ -2487,6 +2492,9 @@ fn verifier_query_phase<F: PrimeField, H: Hash>(
     eval: &F,
     code_type: &str
 ) -> Vec<usize> {
+    println!("VERIFIER QUERY PHASE");
+    println!("CHALLEGNES LENGTH {:?}", query_challenges.len());
+    assert_eq!(query_challenges.len(), 1);
     let n = (1 << (num_vars + log_rate));
     let mut queries_usize: Vec<usize> = query_challenges
         .par_iter()

@@ -528,7 +528,7 @@ pub fn open<F: BlazeField, H: Hash>(
         }
 
         fn get_code_type() -> String {
-            "random".to_string()
+            "binary_rs".to_string()
         }
     }
     let row_size = comm.bh_evals[0].len();
@@ -949,7 +949,7 @@ pub fn verify<F: BlazeField, H: Hash>(
         }
 
         fn get_code_type() -> String {
-            "random".to_string()
+            "binary_rs".to_string()
         }
     }
     let point = iter::repeat_with(|| b128transcript.squeeze_challenges(vp.num_vars))
